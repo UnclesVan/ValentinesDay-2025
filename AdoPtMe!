@@ -1,0 +1,142 @@
+local Workspace = game:GetService("Workspace")  -- Declare Workspace at the top
+local RunService = game:GetService("RunService")
+
+
+for i, v in pairs(workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
+    if v.Name == "Collider" then
+        game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
+        wait(1)
+    end
+end
+
+
+-- Required Rose Path
+local valentinesFolder = Workspace:FindFirstChild("StaticMap") and Workspace.StaticMap:FindFirstChild("Valentines2025")
+
+-- Check if StaticMap exists
+if not valentinesFolder then
+    warn("Valentines2025 folder not found. Script will not run.")
+    return
+end
+
+local rosePath = valentinesFolder:FindFirstChild("Rose_Paths")
+local heartsFolder = valentinesFolder:FindFirstChild("Hearts")
+
+local allRoseParts = {}
+local allHeartParts = {}
+
+local function getAllPartsRecursive(parent, partsTable)
+    for _, child in ipairs(parent:GetChildren()) do
+        if child:IsA("BasePart") then
+            table.insert(partsTable, child)
+        elseif child:IsA("Model") or child:IsA("Folder") then
+            getAllPartsRecursive(child, partsTable)
+        end
+    end
+end
+
+-- Get all rose parts
+if rosePath then
+    getAllPartsRecursive(rosePath, allRoseParts)
+    print("Using Rose_Paths as primary path.")
+else
+    warn("Rose_Paths is nil! No primary path to use.")
+    return -- Exit the script, no paths to follow
+end
+
+-- Get all heart parts
+if heartsFolder then
+    for _, heart in ipairs(heartsFolder:GetChildren()) do
+        if heart:IsA("Model") and heart.Name == "CupidHeart" then -- Ensure we're looking at models and the correct name
+            local collider = heart:FindFirstChild("Collider")
+            if collider then
+                getAllPartsRecursive(collider, allHeartParts)
+            end
+        end
+    end
+    print("Hearts folder found. Found " .. #allHeartParts .. " hearts.")  -- Debug print
+else
+    print("Hearts folder not found. Will only teleport to roses.")
+end
+
+local function teleportInstantly(humanoidRootPart, targetCFrame)
+    if not humanoidRootPart or not targetCFrame then return end
+    humanoidRootPart.CFrame = targetCFrame
+
+end
+
+for i, v in pairs(workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
+    if v.Name == "Collider" then
+        game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
+        wait(1)
+    end
+end
+
+local function teleportToPartsSequentially(humanoidRootPart, parts, name)
+    if not humanoidRootPart then return end -- Early exit
+
+    for i, part in ipairs(parts) do
+        if part and part.Parent then -- Check if part is valid and exists in the world
+            teleportInstantly(humanoidRootPart, part.CFrame + Vector3.new(0, 2, 0))
+            task.wait(1)  -- Adjust delay as needed
+        else
+            warn("Invalid " .. name .. " part found at index " .. i .. ". Part: " .. (part and part.Name or "nil") .. ", Parent: " .. (part and part.Parent and part.Parent.Name or "nil"))
+        end
+    end
+end
+
+-- Teleport logic
+local player = game.Players.LocalPlayer
+
+if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+    local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+
+    if humanoidRootPart then  -- Double check for the HumanoidRootPart
+        -- Teleport to all hearts if they exist
+        if #allHeartParts > 0 then
+            print("Teleporting to hearts...") -- Debug print
+            teleportToPartsSequentially(humanoidRootPart, allHeartParts, "Heart")
+        else
+            print("No hearts to teleport to.") -- Debug print
+        end
+
+        -- Then, teleport to all roses
+        print("Teleporting to roses...")  -- Debug print
+        teleportToPartsSequentially(humanoidRootPart, allRoseParts, "Rose")
+
+        print("Teleportation sequence complete.")
+    else
+        warn("HumanoidRootPart not found in character, can't teleport.")
+    end
+
+    -- Extra Code (Corrected)
+    local collectablesFolder = Workspace.StaticMap.Valentines2025.Hearts  -- Use the Workspace variable declared at the top
+
+    if collectablesFolder then
+        print("Found collectables folder, adding additional teleportation.")
+        for _, v in ipairs(collectablesFolder:GetDescendants()) do  -- Use ipairs for GetDescendants as well
+            if v.Name == "Collider" then
+                if humanoidRootPart then  -- Check for HumanoidRootPart again before teleporting
+                    teleportInstantly(humanoidRootPart, v.CFrame + Vector3.new(0, 2, 0))  --Teleport a little above
+                    task.wait(1)
+                else
+                    warn("HumanoidRootPart not found in additional teleportation logic.")
+                    break -- Exit the loop if HumanoidRootPart is missing
+                end
+            end
+        end
+    else
+        warn("Collectables folder not found. Skipping additional teleportation.")
+    end
+
+else
+    warn("Player or HumanoidRootPart not found!")
+end
+
+
+for i, v in pairs(workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
+    if v.Name == "Collider" then
+        game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
+        wait(1)
+    end
+end
