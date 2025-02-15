@@ -1,144 +1,148 @@
-while wait () do
-local Workspace = game:GetService("Workspace")  -- Declare Workspace at the top
-local RunService = game:GetService("RunService")
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "Fluent " .. Fluent.Version,
+    SubTitle = "by dawid",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+--Fluent provides Lucide Icons https://lucide.dev/icons/ for the tabs, icons are optional
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
+    ValentinesTeleports = Window:AddTab({ Title = "Teleports", Icon = "map" })  -- Added new tab, changed title
+}
+
+local Options = Fluent.Options
 
 
-for i, v in pairs(workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
-    if v.Name == "Collider" then
-        game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
-        wait(1)
-    end
-end
+local teleportSpeed = 1 -- Initial teleport speed (seconds between teleports)
 
+local function teleportToLocations(stopFlag)
+    local rosePaths = workspace.StaticMap.Valentines2025.Rose_Paths:GetChildren()  -- Get the children of Rose_Paths
 
--- Required Rose Path
-local valentinesFolder = Workspace:FindFirstChild("StaticMap") and Workspace.StaticMap:FindFirstChild("Valentines2025")
-
--- Check if StaticMap exists
-if not valentinesFolder then
-    warn("Valentines2025 folder not found. Script will not run.")
-    return
-end
-
-local rosePath = valentinesFolder:FindFirstChild("Rose_Paths")
-local heartsFolder = valentinesFolder:FindFirstChild("Hearts")
-
-local allRoseParts = {}
-local allHeartParts = {}
-
-local function getAllPartsRecursive(parent, partsTable)
-    for _, child in ipairs(parent:GetChildren()) do
-        if child:IsA("BasePart") then
-            table.insert(partsTable, child)
-        elseif child:IsA("Model") or child:IsA("Folder") then
-            getAllPartsRecursive(child, partsTable)
-        end
-    end
-end
-
--- Get all rose parts
-if rosePath then
-    getAllPartsRecursive(rosePath, allRoseParts)
-    print("Using Rose_Paths as primary path.")
-else
-    warn("Rose_Paths is nil! No primary path to use.")
-    return -- Exit the script, no paths to follow
-end
-
--- Get all heart parts
-if heartsFolder then
-    for _, heart in ipairs(heartsFolder:GetChildren()) do
-        if heart:IsA("Model") and heart.Name == "CupidHeart" then -- Ensure we're looking at models and the correct name
-            local collider = heart:FindFirstChild("Collider")
-            if collider then
-                getAllPartsRecursive(collider, allHeartParts)
-            end
-        end
-    end
-    print("Hearts folder found. Found " .. #allHeartParts .. " hearts.")  -- Debug print
-else
-    print("Hearts folder not found. Will only teleport to roses.")
-end
-
-local function teleportInstantly(humanoidRootPart, targetCFrame)
-    if not humanoidRootPart or not targetCFrame then return end
-    humanoidRootPart.CFrame = targetCFrame
-
-end
-
-for i, v in pairs(workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
-    if v.Name == "Collider" then
-        game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
-        wait(1)
-    end
-end
-
-local function teleportToPartsSequentially(humanoidRootPart, parts, name)
-    if not humanoidRootPart then return end -- Early exit
-
-    for i, part in ipairs(parts) do
-        if part and part.Parent then -- Check if part is valid and exists in the world
-            teleportInstantly(humanoidRootPart, part.CFrame + Vector3.new(0, 2, 0))
-            task.wait(1)  -- Adjust delay as needed
-        else
-            warn("Invalid " .. name .. " part found at index " .. i .. ". Part: " .. (part and part.Name or "nil") .. ", Parent: " .. (part and part.Parent and part.Parent.Name or "nil"))
-        end
-    end
-end
-
--- Teleport logic
-local player = game.Players.LocalPlayer
-
-if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-    local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
-
-    if humanoidRootPart then  -- Double check for the HumanoidRootPart
-        -- Teleport to all hearts if they exist
-        if #allHeartParts > 0 then
-            print("Teleporting to hearts...") -- Debug print
-            teleportToPartsSequentially(humanoidRootPart, allHeartParts, "Heart")
-        else
-            print("No hearts to teleport to.") -- Debug print
+    while true do
+        if stopFlag and stopFlag.Value then
+            break  -- Exit the loop if the stop flag is set
         end
 
-        -- Then, teleport to all roses
-        print("Teleporting to roses...")  -- Debug print
-        teleportToPartsSequentially(humanoidRootPart, allRoseParts, "Rose")
-
-        print("Teleportation sequence complete.")
-    else
-        warn("HumanoidRootPart not found in character, can't teleport.")
-    end
-
-    -- Extra Code (Corrected)
-    local collectablesFolder = Workspace.StaticMap.Valentines2025.Hearts  -- Use the Workspace variable declared at the top
-
-    if collectablesFolder then
-        print("Found collectables folder, adding additional teleportation.")
-        for _, v in ipairs(collectablesFolder:GetDescendants()) do  -- Use ipairs for GetDescendants as well
+        -- Teleport to Roses and Hearts (as before)
+        for i, v in pairs(workspace.StaticMap.Valentines2025.Roses:GetDescendants()) do
             if v.Name == "Collider" then
-                if humanoidRootPart then  -- Check for HumanoidRootPart again before teleporting
-                    teleportInstantly(humanoidRootPart, v.CFrame + Vector3.new(0, 2, 0))  --Teleport a little above
-                    task.wait(1)
+                if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character.HumanoidRootPart then
+                    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
+                    wait(teleportSpeed)
                 else
-                    warn("HumanoidRootPart not found in additional teleportation logic.")
-                    break -- Exit the loop if HumanoidRootPart is missing
+                    warn("Character or HumanoidRootPart not found.")
                 end
             end
         end
+
+        for i, v in pairs(workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
+            if v.Name == "Collider" then
+                if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character.HumanoidRootPart then
+                    game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
+                    wait(teleportSpeed)
+                else
+                    warn("Character or HumanoidRootPart not found.")
+                end
+            end
+        end
+
+        -- Teleport to Rose Paths
+        for _, roseModel in ipairs(rosePaths) do
+            if roseModel:IsA("Model") then  -- Ensure it's a model
+                for _, part in ipairs(roseModel:GetDescendants()) do
+                    if part:IsA("BasePart") then -- Check if the object is a BasePart
+                        if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character.HumanoidRootPart then
+                            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = part.CFrame
+                            wait(teleportSpeed)
+                        else
+                            warn("Character or HumanoidRootPart not found.")
+                        end
+                    end
+                end
+            end
+        end
+
+        wait(teleportSpeed)
+    end
+    print("Teleport loop stopped.")
+end
+
+local teleportCoroutine
+local stopTeleportFlag = { Value = false }  -- Use a table to hold the flag so it can be modified by reference
+
+local ValentinesTeleportToggle = Tabs.ValentinesTeleports:AddToggle("ValentinesTeleportToggle", {
+    Title = "Teleport to Valentines Locations",
+    Default = false,
+    Description = "Teleports to roses, hearts, and rose paths locations in the Valentine's map."
+})
+
+ValentinesTeleportToggle:OnChanged(function(state)
+    if state then
+        -- Start teleportation coroutine
+        stopTeleportFlag.Value = false
+        teleportCoroutine = task.spawn(teleportToLocations, stopTeleportFlag)
     else
-        warn("Collectables folder not found. Skipping additional teleportation.")
+        -- Stop the teleportation coroutine
+        stopTeleportFlag.Value = true -- Signal the coroutine to stop
+        if teleportCoroutine then
+            -- No need to kill the coroutine as the while loop should terminate itself
+            teleportCoroutine = nil
+        end
     end
+end)
 
-else
-    warn("Player or HumanoidRootPart not found!")
-end
-
-
-for i, v in pairs(workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
-    if v.Name == "Collider" then
-        game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
-        wait(1)
+local TeleportSpeedSlider = Tabs.ValentinesTeleports:AddSlider("TeleportSpeedSlider", {
+    Title = "Teleport Speed",
+    Description = "Adjust the speed of the teleports (lower value = faster).",
+    Default = 1,  -- Start with a speed of 1 second
+    Min = 0.1,    -- Minimum speed (0.1 seconds)
+    Max = 5,      -- Maximum speed (5 seconds)
+    Rounding = 0.1,  -- Adjust the increment/decrement step
+    Callback = function(value)
+        teleportSpeed = value -- Update the global speed variable
+        -- If the teleport is running, restart it with the new speed.
+        if teleportCoroutine then
+            stopTeleportFlag.Value = true -- Signal the coroutine to stop
+            task.wait(0.1)
+            stopTeleportFlag.Value = false
+            teleportCoroutine = task.spawn(teleportToLocations, stopTeleportFlag)
+        end
     end
-end
-end
+})
+
+-- Addons:
+-- SaveManager (Allows you to have a configuration system)
+-- InterfaceManager (Allows you to have a interface managment system)
+
+-- Hand the library over to our managers
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+
+SaveManager:IgnoreThemeSettings()
+
+SaveManager:SetIgnoreIndexes({})
+
+InterfaceManager:SetFolder("FluentScriptHub")
+SaveManager:SetFolder("FluentScriptHub/specific-game")
+
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+Window:SelectTab(1)
+
+Fluent:Notify({
+    Title = "Fluent",
+    Content = "The script has been loaded.",
+    Duration = 8
+})
+
+SaveManager:LoadAutoloadConfig()
