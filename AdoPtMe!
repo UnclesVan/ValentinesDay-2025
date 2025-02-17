@@ -1,8 +1,8 @@
--- Anti-AFK Script
+-- Anti-AFK Script (Infinite Warnings, No Disconnect)
 
 -- Configuration
 local AFK_TIMEOUT = 300 -- seconds (5 minutes)
-local MAX_AFK_WARNINGS = 3
+local MAX_AFK_WARNINGS = 3  -- Keep this to set an amount of warnings
 
 -- Variables
 local player = game.Players.LocalPlayer
@@ -31,19 +31,20 @@ end
 function onRenderStepped(dt)
     if isAFK and afkTimer.Value > AFK_TIMEOUT then
         if afkWarnings.Value < MAX_AFK_WARNINGS then
-            game.StarterGui.Warning.Text = "You have been AFK for " .. tostring(math.floor(afkTimer.Value)) .. " seconds."
+            game.StarterGui.Warning.Text = "You have been AFK for " .. tostring(math.floor(afkTimer.Value)) .. " seconds. Warning: "..tostring(afkWarnings.Value+1).."/"..tostring(MAX_AFK_WARNINGS)
             afkWarnings.Value = afkWarnings.Value + 1
         else
-            warn("Player has been AFK for too long!")
-            -- You can add your custom punishment here (e.g., kick or ban)
+           game.StarterGui.Warning.Text = "You have been AFK for " .. tostring(math.floor(afkTimer.Value)) .. " seconds. Final Warning!"
         end
     end
 
     if not isAFK then
+        afkTimer.Value = 0 -- Reset timer
+        isAFK = false
+    else
         afkTimer.Value = afkTimer.Value + dt
     end
 end
-
 
 -- Event Hooks
 game:GetService("UserInputService").InputBegan:Connect(onPlayerInput)
