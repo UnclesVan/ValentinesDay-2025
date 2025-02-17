@@ -1,4 +1,53 @@
+-- Anti-AFK Script
 
+-- Configuration
+local AFK_TIMEOUT = 300 -- seconds (5 minutes)
+local MAX_AFK_WARNINGS = 3
+
+-- Variables
+local player = game.Players.LocalPlayer
+local afkTimer = Instance.new("IntValue")
+local afkWarnings = Instance.new("IntValue")
+local isAFK = false
+local character
+
+-- Initialize
+afkTimer.Name = "AFK_Timer"
+afkTimer.Value = 0
+afkWarnings.Name = "AFK_Warnings"
+afkWarnings.Value = 0
+
+
+function onPlayerInput(input)
+    if input.UserInputType == Enum.UserInputType.Keyboard or input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
+        if not isAFK then
+            afkTimer.Value = 0
+            isAFK = false
+        end
+    end
+end
+
+
+function onRenderStepped(dt)
+    if isAFK and afkTimer.Value > AFK_TIMEOUT then
+        if afkWarnings.Value < MAX_AFK_WARNINGS then
+            game.StarterGui.Warning.Text = "You have been AFK for " .. tostring(math.floor(afkTimer.Value)) .. " seconds."
+            afkWarnings.Value = afkWarnings.Value + 1
+        else
+            warn("Player has been AFK for too long!")
+            -- You can add your custom punishment here (e.g., kick or ban)
+        end
+    end
+
+    if not isAFK then
+        afkTimer.Value = afkTimer.Value + dt
+    end
+end
+
+
+-- Event Hooks
+game:GetService("UserInputService").InputBegan:Connect(onPlayerInput)
+game:GetService("RunService").RenderStepped:Connect(onRenderStepped)
 
 
 
