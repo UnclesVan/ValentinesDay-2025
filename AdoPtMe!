@@ -49,7 +49,7 @@ end
 game:GetService("UserInputService").InputBegan:Connect(onPlayerInput)
 game:GetService("RunService").RenderStepped:Connect(onRenderStepped)
 
-print("Anti AFK has b een enabled.")
+print("Anti AFK has been enabled.")
 
 -- Create the Fluent UI if it doesn't exist, otherwise just make the button
 
