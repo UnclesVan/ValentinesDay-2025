@@ -1,54 +1,98 @@
--- Anti-AFK Script (Infinite Warnings, No Disconnect)
-
--- Configuration
-local AFK_TIMEOUT = 300 -- seconds (5 minutes)
-local MAX_AFK_WARNINGS = 3  -- Keep this to set an amount of warnings
-
--- Variables
-local player = game.Players.LocalPlayer
-local afkTimer = Instance.new("IntValue")
-local afkWarnings = Instance.new("IntValue")
-local isAFK = false
-local character
-
--- Initialize
-afkTimer.Name = "AFK_Timer"
-afkTimer.Value = 0
-afkWarnings.Name = "AFK_Warnings"
-afkWarnings.Value = 0
 
 
-function onPlayerInput(input)
-    if input.UserInputType == Enum.UserInputType.Keyboard or input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
-        if not isAFK then
-            afkTimer.Value = 0
-            isAFK = false
-        end
+-- Client-side script (LocalScript in StarterGui or a ScreenGui within PlayerGui)
+
+-- GUI Elements (created dynamically)
+local ba = Instance.new("ScreenGui")
+local ca = Instance.new("TextLabel") -- Main Label
+local ab = Instance.new("TextLabel") -- Status Label
+local afkTimerLabel = Instance.new("TextLabel") -- Timer label
+
+-- Properties
+ba.Name = "ba"
+ca.Name = "ca"
+ab.Name = "ab"
+afkTimerLabel.Name = "afkTimerLabel"
+
+-- Parent GUI to CoreGui
+ba.Parent = game.CoreGui
+ba.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Create GUI elements
+ca.Parent = ba
+ca.Active = true
+ca.BackgroundColor3 = Color3.new(0, 0, 0) -- Transparent background
+ca.BackgroundTransparency = 1
+ca.Position = UDim2.new(0.01, 0, 0.01, 0) -- Top-left position (adjust offset as needed)
+ca.Size = UDim2.new(0, 500, 0, 120) -- Larger text size, and size
+ca.Font = Enum.Font.SourceSansSemibold
+ca.Text = "Large Anti AFK Script"
+ca.TextColor3 = Color3.new(0, 1, 0) -- Green text color
+ca.TextSize = 64 -- Larger text size (all)
+ca.TextStrokeTransparency = 0
+ca.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+ca.TextXAlignment = Enum.TextXAlignment.Left
+
+ab.Parent = ba
+ab.BackgroundColor3 = Color3.new(0, 0, 0) -- Transparent background
+ab.BackgroundTransparency = 1
+ab.Position = UDim2.new(0.01, 0, 0.2, 0) -- Position below the main label and adjusted
+ab.Size = UDim2.new(0, 500, 0, 120) -- Larger size
+ab.Font = Enum.Font.ArialBold
+ab.Text = "Status: Active"
+ab.TextColor3 = Color3.new(0, 1, 0) -- Green text color
+ab.TextStrokeTransparency = 0
+ab.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+ab.TextSize = 64 -- Increased to 64
+ab.TextXAlignment = Enum.TextXAlignment.Left
+
+afkTimerLabel.Parent = ba
+afkTimerLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+afkTimerLabel.BackgroundTransparency = 1
+afkTimerLabel.Position = UDim2.new(0.01, 0, 0.39, 0) -- Below the status label
+afkTimerLabel.Size = UDim2.new(0, 500, 0, 120) -- Larger size
+afkTimerLabel.Font = Enum.Font.Arial
+afkTimerLabel.Text = "Total Time: 0s"
+afkTimerLabel.TextColor3 = Color3.new(0, 1, 0) -- Green text color
+afkTimerLabel.TextSize = 64 -- All text size now 64
+afkTimerLabel.TextStrokeTransparency = 0
+afkTimerLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+afkTimerLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- **Anti-AFK Logic:** Uses VirtualUser to simulate input.
+
+local bb = game:GetService("VirtualUser")
+local afkTimer = 0
+
+-- Function to update the AFK timer
+local function updateAfkTimer()
+    while wait(1) do
+        afkTimer = afkTimer + 1
+        afkTimerLabel.Text = "Total Time: " .. afkTimer .. "s"
     end
 end
 
+-- Start the timer loop in a separate thread
+coroutine.wrap(updateAfkTimer)()
 
-function onRenderStepped(dt)
-    if isAFK and afkTimer.Value > AFK_TIMEOUT then
-        if afkWarnings.Value < MAX_AFK_WARNINGS then
-            game.StarterGui.Warning.Text = "You have been AFK for " .. tostring(math.floor(afkTimer.Value)) .. " seconds. Warning: "..tostring(afkWarnings.Value+1).."/"..tostring(MAX_AFK_WARNINGS)
-            afkWarnings.Value = afkWarnings.Value + 1
-        else
-           game.StarterGui.Warning.Text = "You have been AFK for " .. tostring(math.floor(afkTimer.Value)) .. " seconds. Final Warning!"
-        end
-    end
+local function onIdled()
+    -- This part of the script is now unnecessary, as the timer runs independently
+    -- and should not reset.  We leave it in for the anti-afk functionality.
 
-    if not isAFK then
-        afkTimer.Value = 0 -- Reset timer
-        isAFK = false
-    else
-        afkTimer.Value = afkTimer.Value + dt
-    end
+    -- Simulate clicking the second mouse button (right-click, usually).
+    bb:CaptureController()
+    bb:ClickButton2(Vector2.new())
+
+    ab.Text = "Roblox tried to kick u but i kicked him instead"
+    wait(2)
+    ab.Text = "Status: Active"
 end
 
--- Event Hooks
-game:GetService("UserInputService").InputBegan:Connect(onPlayerInput)
-game:GetService("RunService").RenderStepped:Connect(onRenderStepped)
+-- Connect the Idled event to the anti-AFk function.
+game.Players.LocalPlayer.Idled:Connect(onIdled)
+
+
+
 
 print("Anti AFK has been enabled.")
 
