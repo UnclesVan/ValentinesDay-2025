@@ -1,0 +1,102 @@
+-- Create the Fluent UI if it doesn't exist
+local ValentinesEvent, ValentinesEventTeleport, TeleportSpeed -- Placeholders
+local screenGui -- This will hold our shop GUI reference
+
+-- Define function to create shop UI 
+local function createShopUI()
+    if not screenGui then
+        screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "ShopScreenGui"
+        screenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+
+        -- Create the Main Frame
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(0.4, 0, 0.6, 0)
+        frame.Position = UDim2.new(0.3, 0, 0.2, 0)
+        frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        frame.BackgroundTransparency = 0.2
+        frame.Parent = screenGui
+
+        -- Rounded corners for the frame
+        local corner = Instance.new("UICorner")
+        corner.Parent = frame
+
+        -- Close Button
+        local closeButton = Instance.new("TextButton")
+        closeButton.Size = UDim2.new(0.1, 0, 0.05, 0)
+        closeButton.Position = UDim2.new(0.85, 0, 0.05, 0)
+        closeButton.Text = "Close"
+        closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+        closeButton.BackgroundColor3 = Color3.fromRGB(150, 0, 10)
+        closeButton.BackgroundTransparency = 0.2
+        closeButton.Font = Enum.Font.SourceSansBold
+        closeButton.TextSize = 14
+        closeButton.Parent = frame
+
+        -- Connect the Close Button to destroy the GUI
+        closeButton.MouseButton1Click:Connect(function()
+            screenGui:Destroy() -- This will destroy the GUI
+            screenGui = nil  -- Clear the reference
+        end)
+
+        -- (Additional code for setting up the shop categories goes here)
+    end
+
+    screenGui.Enabled = true -- Make the GUI visible
+end
+
+-- Function to hide the shop UI
+local function hideShopUI()
+    if screenGui then
+        screenGui.Enabled = false -- Hide the GUI
+    end
+end
+
+-- Check if the Fluent UI is already loaded
+if _G.FluentLoaded then
+    local Fluent = _G.Fluent
+    local SaveManager = _G.SaveManager
+    local InterfaceManager = _G.InterfaceManager
+    local Window = _G.FluentWindow
+    
+    -- Create the Tabs
+    local Tabs = {
+        Main = Window:AddTab({ Title = "Main", Icon = "" }),
+        Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
+        ValentinesTeleports = Window:AddTab({ Title = "Teleports", Icon = "map" }),
+        AdoptMeShop = Window:AddTab({ Title = "ADOPTMESHOP", Icon = "shopping-cart" }), -- New tab for AdoptMeShop
+    }
+
+    local shopUIVisible = false -- To track the visibility of the shop UI
+
+    -- Add a toggle for handling the shop UI in the new tab
+    local shopToggle = Tabs.AdoptMeShop:AddToggle("AdoptMeShopToggle", {
+        Title = "Show Adopt Me Shop",
+        Default = false,
+        Description = "Toggles the visibility of the Adopt Me Shop UI."
+    })
+
+    shopToggle:OnChanged(function(state)
+        if state then
+            if not shopUIVisible then
+                createShopUI() -- Create and show the shop when the toggle is on
+                shopUIVisible = true
+            end
+        else
+            if shopUIVisible then
+                hideShopUI() -- Hide the shop when the toggle is off
+                shopUIVisible = false
+            end
+        end
+    end)
+
+    -- Notify user
+    Fluent:Notify({
+        Title = "Fluent",
+        Content = "The script has been loaded.",
+        Duration = 8
+    })
+
+    SaveManager:LoadAutoloadConfig()
+    _G.FluentLoaded = true
+end
