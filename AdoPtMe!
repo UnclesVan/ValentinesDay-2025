@@ -1,8 +1,8 @@
-
-
 -- Client-side script (LocalScript in StarterGui or a ScreenGui within PlayerGui)
 
 -- GUI Elements (created dynamically)
+local Player = game.Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
 local ba = Instance.new("ScreenGui")
 local ca = Instance.new("TextLabel") -- Main Label
 local ab = Instance.new("TextLabel") -- Status Label
@@ -14,8 +14,8 @@ ca.Name = "ca"
 ab.Name = "ab"
 afkTimerLabel.Name = "afkTimerLabel"
 
--- Parent GUI to CoreGui
-ba.Parent = game.CoreGui
+-- Parent GUI to PlayerGui instead of CoreGui
+ba.Parent = PlayerGui
 ba.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 -- Create GUI elements
@@ -24,11 +24,11 @@ ca.Active = true
 ca.BackgroundColor3 = Color3.new(0, 0, 0) -- Transparent background
 ca.BackgroundTransparency = 1
 ca.Position = UDim2.new(0.01, 0, 0.01, 0) -- Top-left position (adjust offset as needed)
-ca.Size = UDim2.new(0, 500, 0, 120) -- Larger text size, and size
+ca.Size = UDim2.new(0, 500, 0, 120) -- Larger text size
 ca.Font = Enum.Font.SourceSansSemibold
 ca.Text = "Anti AFK Script"
 ca.TextColor3 = Color3.new(0, 1, 0) -- Green text color
-ca.TextSize = 64 -- Larger text size (all)
+ca.TextSize = 64 -- Larger text size
 ca.TextStrokeTransparency = 0
 ca.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 ca.TextXAlignment = Enum.TextXAlignment.Left
@@ -36,7 +36,7 @@ ca.TextXAlignment = Enum.TextXAlignment.Left
 ab.Parent = ba
 ab.BackgroundColor3 = Color3.new(0, 0, 0) -- Transparent background
 ab.BackgroundTransparency = 1
-ab.Position = UDim2.new(0.01, 0, 0.2, 0) -- Position below the main label and adjusted
+ab.Position = UDim2.new(0.01, 0, 0.2, 0) -- Position below the main label
 ab.Size = UDim2.new(0, 500, 0, 120) -- Larger size
 ab.Font = Enum.Font.ArialBold
 ab.Text = "Status: Active"
@@ -59,14 +59,14 @@ afkTimerLabel.TextStrokeTransparency = 0
 afkTimerLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 afkTimerLabel.TextXAlignment = Enum.TextXAlignment.Left
 
--- **Anti-AFK Logic:** Uses VirtualUser to simulate input.
-
-local bb = game:GetService("VirtualUser")
+-- Anti-AFK Logic: Uses VirtualUser to simulate input
+local VirtualUser = game:GetService("VirtualUser")
 local afkTimer = 0
 
 -- Function to update the AFK timer
 local function updateAfkTimer()
-    while wait(1) do
+    while true do
+        task.wait(1)
         afkTimer = afkTimer + 1
         afkTimerLabel.Text = "Total Time: " .. afkTimer .. "s"
     end
@@ -76,69 +76,41 @@ end
 coroutine.wrap(updateAfkTimer)()
 
 local function onIdled()
-    -- This part of the script is now unnecessary, as the timer runs independently
-    -- and should not reset.  We leave it in for the anti-afk functionality.
+    -- Simulate clicking the second mouse button (right-click)
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
 
-    -- Simulate clicking the second mouse button (right-click, usually).
-    bb:CaptureController()
-    bb:ClickButton2(Vector2.new())
-
-    ab.Text = "Roblox tried to kick u but i kicked him instead"
-    wait(2)
+    ab.Text = "Roblox tried to kick you but I kicked him instead"
+    task.wait(2)
     ab.Text = "Status: Active"
 end
 
--- Connect the Idled event to the anti-AFk function.
-game.Players.LocalPlayer.Idled:Connect(onIdled)
-
-
-
+-- Connect the Idled event to the anti-AFK function
+Player.Idled:Connect(onIdled)
 
 print("Anti AFK has been enabled.")
 
-task.wwait(2)
+-- Create the Fluent UI if it doesn't exist
+local ValentinesEvent, ValentinesEventTeleport, TeleportSpeed -- Placeholders
 
-
--- Create the Fluent UI if it doesn't exist, otherwise just make the button
-
--- Parent script references (assuming they are in the same script)
-local ValentinesEvent -- Placeholder, will be populated from UI elements or script properties.
-local ValentinesEventTeleport -- Placeholder, will be populated from UI elements or script properties.
-local TeleportSpeed -- Placeholder, will be populated from UI elements or script properties.
-
--- Check if the Fluent UI is already loaded (assuming Fluent is a global or a service)
+-- Check if the Fluent UI is already loaded
 if _G.FluentLoaded then  -- Use a global flag
-    -- Fluent UI already exists, just create the floating button.
-    Fluent = _G.Fluent -- Use the existing instance
-    SaveManager = _G.SaveManager
-    InterfaceManager = _G.InterfaceManager
-    Window = _G.FluentWindow  -- Assuming you store the window as a global.
-    floatingButton = createFloatingButton()
-    floatingButton.Visible = true -- Make sure it is visible.
-
-    -- Re-establish the connections.
-    if Window.Minimized and typeof(Window.Minimized.Connect) == 'function' then
-        Window.Minimized:Connect(function()
-            floatingButton.Visible = true
-        end)
-    end
-    if Window.Unminimized and typeof(Window.Unminimized.Connect) == 'function' then
-        Window.Unminimized:Connect(function()
-            floatingButton.Visible = false
-        end)
-    end
-
+    local Fluent = _G.Fluent
+    local SaveManager = _G.SaveManager
+    local InterfaceManager = _G.InterfaceManager
+    local Window = _G.FluentWindow
+    createFloatingButton() -- Function needs to be defined later
 else
-    -- Fluent UI doesn't exist, load everything.
-    Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-    SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-    InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+    -- Fluent UI doesn't exist, load everything
+    local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+    local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+    local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
     _G.Fluent = Fluent
     _G.SaveManager = SaveManager
     _G.InterfaceManager = InterfaceManager
-
-    local UIScale = game:GetService("UIScale")
-    Window = Fluent:CreateWindow({
+    
+    -- Create Main UI Window
+    local Window = Fluent:CreateWindow({
         Title = "Fluent " .. Fluent.Version,
         SubTitle = "by dawid",
         TabWidth = 160,
@@ -149,253 +121,170 @@ else
     })
     _G.FluentWindow = Window
 
-    -- Fluent provides Lucide Icons https://lucide.dev/icons/ for the tabs, icons are optional
+    -- Create Tabs
     local Tabs = {
         Main = Window:AddTab({ Title = "Main", Icon = "" }),
         Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
-        ValentinesTeleports = Window:AddTab({ Title = "Teleports", Icon = "map" })  -- Added new tab, changed title
+        ValentinesTeleports = Window:AddTab({ Title = "Teleports", Icon = "map" }), 
     }
 
-    local Options = Fluent.Options
-
     -- Local Variables
-    local LargeTextLabel = game:GetService("Players").LocalPlayer.PlayerGui.HintApp.LargeTextLabel -- Get reference to the Large Label Text
     local teleportSpeed = 1 -- Initial teleport speed (seconds between teleports)
-    local stopTeleportFlag = { Value = false }  -- Use a table to hold the flag so it can be modified by reference
+    local stopTeleportFlag = { Value = false }  -- Table to hold the flag so it can be modified by reference
 
     -- Function to teleport to Cupid
     local function teleportToCupid()
-        if not ValentinesEvent or not ValentinesEvent.IsToggled then return end -- Don't teleport if toggle is off
+        if not ValentinesEvent or not ValentinesEvent.IsToggled then return end
 
-        for i, v in pairs(workspace.StaticMap.Valentines2025.Cupid:GetDescendants()) do
-            -- Teleport to Cupid Client
-            if v.Name == "CupidClient" then
-                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
-                wait(teleportSpeed) -- Use the slider value
-            end
-            -- Teleport to Cupid Server
-            if v.Name == "CupidServer" then
-                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
-                wait(teleportSpeed) -- Use the slider value
+        for _,v in pairs(workspace.StaticMap.Valentines2025.Cupid:GetDescendants()) do
+            if v.Name == "CupidClient" or v.Name == "CupidServer" then
+                local character = Player.Character
+                if character and character:FindFirstChild("HumanoidRootPart") then
+                    character.HumanoidRootPart.CFrame = v.CFrame
+                    task.wait(teleportSpeed)
+                end
             end
         end
     end
 
     -- Function to toggle the teleportation
     local function toggleTeleportation()
-        if not ValentinesEvent or not LargeTextLabel then return end
+        if not ValentinesEvent or not Player.PlayerGui:FindFirstChild("HintApp") then return end
+
+        local LargeTextLabel = Player.PlayerGui.HintApp:FindFirstChild("LargeTextLabel")
+        if not LargeTextLabel then return end
+        
         if ValentinesEvent.IsToggled then
-            -- Start the teleportation
             LargeTextLabel.Text = "You Are Currently In a Valentines Event."
         else
-            -- Stop the teleportation
             LargeTextLabel.Text = "You Are Not in a Valentines Event."
         end
     end
 
-    -- Function to teleport to Roses and other locations
+    -- Function to teleport to locations
     local function teleportToLocations(stopFlag)
-        local rosePaths = workspace.StaticMap.Valentines2025.Rose_Paths:GetChildren()  -- Get the children of Rose_Paths
-
         while true do
-            if stopFlag and stopFlag.Value then
-                break  -- Exit the loop if the stop flag is set
-            end
+            if stopFlag and stopFlag.Value then break end
 
-            -- Teleport to Roses and Hearts (as before)
-            for i, v in pairs(workspace.StaticMap.Valentines2025.Roses:GetDescendants()) do
-                if v.Name == "Collider" then
-                    if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character.HumanoidRootPart then
-                        game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
-                        wait(teleportSpeed) -- Use the slider value
+            -- Teleport to various locations (e.g., roses, hearts)
+            for _, v in pairs(workspace.StaticMap.Valentines2025:GetDescendants()) do
+                if v:IsA("BasePart") and v.Name == "Collider" then
+                    local character = Player.Character
+                    if character and character:FindFirstChild("HumanoidRootPart") then
+                        character.HumanoidRootPart.CFrame = v.CFrame
+                        task.wait(teleportSpeed)
                     else
                         warn("Character or HumanoidRootPart not found.")
                     end
                 end
             end
 
-            for i, v in pairs(workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
-                if v.Name == "Collider" then
-                    if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character.HumanoidRootPart then
-                        game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = v.CFrame
-                        wait(teleportSpeed) -- Use the slider value
-                    else
-                        warn("Character or HumanoidRootPart not found.")
-                    end
-                end
-            end
+            teleportToCupid() -- Teleport to Cupid frequently
 
-            -- Teleport to Rose Paths
-            for _, roseModel in ipairs(rosePaths) do
-                if roseModel:IsA("Model") then  -- Ensure it's a model
-                    for _, part in ipairs(roseModel:GetDescendants()) do
-                        if part:IsA("BasePart") then -- Check if the object is a BasePart
-                            if game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character.HumanoidRootPart then
-                                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = part.CFrame
-                                wait(teleportSpeed) -- Use the slider value
-                            else
-                                warn("Character or HumanoidRootPart not found.")
-                            end
-                        end
-                    end
-                end
-            end
-
-            -- Teleport to Cupid
-            teleportToCupid()
-
-            wait(teleportSpeed)
+            task.wait(teleportSpeed)
         end
-        print("Teleport loop stopped.")
     end
-
+    
+    -- Teleport Toggle
     local ValentinesTeleportToggle = Tabs.ValentinesTeleports:AddToggle("ValentinesTeleportToggle", {
         Title = "Teleport to Valentines Locations",
         Default = false,
-        Description = "Teleports to roses, hearts, rose paths, and Cupid in the Valentine's map."
+        Description = "Teleports to various Valentine-themed locations."
     })
 
     ValentinesTeleportToggle:OnChanged(function(state)
         if state then
-            -- Start teleportation coroutine
             stopTeleportFlag.Value = false
-            local teleportCoroutine = task.spawn(teleportToLocations, stopTeleportFlag)
+            task.spawn(teleportToLocations, stopTeleportFlag)
         else
-            -- Stop the teleportation coroutine
-            stopTeleportFlag.Value = true -- Signal the coroutine to stop
-            if teleportCoroutine then
-                -- No need to kill the coroutine as the while loop should terminate itself
-                teleportCoroutine = nil
-            end
+            stopTeleportFlag.Value = true -- Signal to stop
         end
     end)
 
-    local TeleportSpeedSlider = Tabs.ValentinesTeleports:AddSlider("TeleportSpeedSlider", {
+    -- Teleport Speed Slider
+    Tabs.ValentinesTeleports:AddSlider("TeleportSpeedSlider", {
         Title = "Teleport Speed",
         Description = "Adjust the speed of the teleports (lower value = faster).",
-        Default = 1,  -- Start with a speed of 1 second
-        Min = 0.1,    -- Minimum speed (0.1 seconds)
-        Max = 5,      -- Maximum speed (5 seconds)
-        Rounding = 0.1,  -- Adjust the increment/decrement step
+        Default = 1,
+        Min = 0.1,
+        Max = 5,
+        Rounding = 0.1,
         Callback = function(value)
-            teleportSpeed = value -- Update the speed variable
-            -- If the teleport is running, restart it with the new speed.
-            if ValentinesTeleportToggle.State then
-                stopTeleportFlag.Value = true -- Signal the coroutine to stop
-                task.wait(0.1)
-                stopTeleportFlag.Value = false
-                ValentinesTeleportToggle:OnChanged(true) -- Restart the teleport
-            end
+            teleportSpeed = value
         end
     })
 
-    -- Function to remove background objects without causing the script to halt due to errors
+    -- Remove Background Objects Functionality
     local function removeBackgroundObjects()
         while true do
-            wait(1) -- Wait for 1 second before the next scan
+            task.wait(1)
 
-            -- Try to remove various objects
-            pcall(function()
-                local trampolines = workspace.StaticMap.Park:FindFirstChild("Trampolines")
-                if trampolines then trampolines:Destroy() end
-            end)
-
-            pcall(function()
-                local seesaw = workspace.StaticMap.Park:FindFirstChild("Seesaw")
-                if seesaw then seesaw:Destroy() end
-            end)
-
-            pcall(function()
-                local swingSets = workspace.StaticMap.Park:FindFirstChild("SwingSets")
-                if swingSets then swingSets:Destroy() end
-            end)
-
-            pcall(function()
-                local nursery = workspace.Interiors["MainMap!Default"].Buildings:FindFirstChild("Nursery")
-                if nursery then nursery:Destroy() end
-            end)
-
-            pcall(function()
-                local roundabout = workspace.StaticMap.Park:FindFirstChild("Roundabout")
-                if roundabout then roundabout:Destroy() end
-            end)
+            local objectsToRemove = {
+                "Trampolines", "Seesaw", "SwingSets", "Nursery", "Roundabout"
+            }
+            for _, objectName in ipairs(objectsToRemove) do
+                pcall(function()
+                    for _, v in pairs(workspace.StaticMap.Park:GetChildren()) do
+                        if v.Name == objectName then
+                            v:Destroy()
+                        end
+                    end
+                end)
+            end
         end
     end
 
-    -- Start the background task to remove unwanted objects
+    -- Start removing background objects
     task.spawn(removeBackgroundObjects)
 
-    -- Autohide functionality is removed or modified. No autohide toggle
-
-    -- Create a floating button
+    -- Floating Button Creation
     local function createFloatingButton()
-        local buttonSize = UDim2.new(0, 40, 0, 40) -- Size of the button
-        local button = Instance.new("ImageButton") -- Changed to ImageButton
-        button.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+        local buttonSize = UDim2.new(0, 40, 0, 40)
+        local button = Instance.new("ImageButton")
+        button.Parent = PlayerGui
         button.Size = buttonSize
-        button.Position = UDim2.new(0.5, -20, 0, 50) -- Position in the middle top (adjust offset as needed)
-        button.AnchorPoint = Vector2.new(0.5, 0) -- Set the anchor point to the center top
-        button.Active = true
-        button.Visible = true -- Initially shown
-        button.Size = buttonSize
-        button.Image = "rbxasset://textures/ui/LuaIcon.png"  -- Example:  Use an icon that represents your UI.
+        button.Position = UDim2.new(0.5, -20, 0, 50)
+        button.AnchorPoint = Vector2.new(0.5, 0)
+        button.Image = "rbxasset://textures/ui/LuaIcon.png"
         button.ImageTransparency = 0.2
-        button.ImageColor3 = Color3.new(1, 1, 1) -- Set the ImageColor3
-        button.BorderSizePixel = 0 --remove border
+        button.ImageColor3 = Color3.new(1, 1, 1)
+        button.BorderSizePixel = 0
 
-        local corner = Instance.new("UICorner")  -- Create a UICorner
-        corner.CornerRadius = UDim.new(0.5, 0)   -- Set the corner radius
-        corner.Parent = button                 -- Parent it to the ImageButton
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0.5, 0)
+        corner.Parent = button
 
-        -- Handle button click to show the UI
+        -- Handle button click to show/hide the UI
         button.MouseButton1Down:Connect(function()
-            if Window:IsVisible() then
-                Window:SetVisible(false)
-            else
-                Window:SetVisible(true)
-            end
+            Window:SetVisible(not Window:IsVisible())
         end)
 
         return button
     end
 
-    floatingButton = createFloatingButton()
+    createFloatingButton()
 
-    -- Listen to the minimized event
-    -- Ensure Window.Minimized and Window.Unminimized exist and are valid connections.
-    -- Show button on minimize, hide on unminimize
-    if Window.Minimized and typeof(Window.Minimized.Connect) == 'function' then
-        Window.Minimized:Connect(function()
-            floatingButton.Visible = true
-        end)
+    -- Function to set up functionality for minimizing
+    if Window.Minimized then
+        Window.Minimized:Connect(function() floatingButton.Visible = true end)
     end
-    if Window.Unminimized and typeof(Window.Unminimized.Connect) == 'function' then
-        Window.Unminimized:Connect(function()
-            floatingButton.Visible = false
-        end)
+    if Window.Unminimized then
+        Window.Unminimized:Connect(function() floatingButton.Visible = false end)
     end
 
-    -- Addons:
-    -- SaveManager (Allows you to have a configuration system)
-    -- InterfaceManager (Allows you to have a interface managment system)
-
-    -- Hand the library over to our managers
+    -- Hand the library over to managers
     SaveManager:SetLibrary(Fluent)
     InterfaceManager:SetLibrary(Fluent)
-
     SaveManager:IgnoreThemeSettings()
-
     SaveManager:SetIgnoreIndexes({})
-
     InterfaceManager:SetFolder("FluentScriptHub")
     SaveManager:SetFolder("FluentScriptHub/specific-game")
-
     InterfaceManager:BuildInterfaceSection(Tabs.Settings)
     SaveManager:BuildConfigSection(Tabs.Settings)
 
-    Window:SelectTab(1)
+    Window:SelectTab(1) -- Select the first tab
 
-    -- Add the toggle to toggle Valentines Teleportation
+    -- Valentines Event Toggle
     local ValentinesEventToggle = Tabs.Main:AddToggle("ValentinesEventToggle", {
         Title = "Valentines Event",
         Default = false,
@@ -403,24 +292,11 @@ else
     })
 
     ValentinesEventToggle:OnChanged(function(state)
-        if state then
-            -- Start teleportation coroutine
-            teleportToCupid = function() teleportToCupid() end --Enable it.
-            ValentinesEvent = {IsToggled = state} -- Create new reference for events to act on.
-            toggleTeleportation()
-        else
-            -- Stop the teleportation coroutine
-            teleportToCupid = function() end --Disable the teleport.
-            ValentinesEvent = {IsToggled = state} -- Create new reference for events to act on.
-            toggleTeleportation()
-        end
+        ValentinesEvent = { IsToggled = state }
+        toggleTeleportation()
     end)
 
-    -- Set the initial state
-    ValentinesEvent = {IsToggled = ValentinesEventToggle.State}  --Initial value.
-    toggleTeleportation()
-
-    -- Notify the user about the loaded script
+    -- Notify user
     Fluent:Notify({
         Title = "Fluent",
         Content = "The script has been loaded.",
