@@ -96,6 +96,9 @@ game.Players.LocalPlayer.Idled:Connect(onIdled)
 
 print("Anti AFK has been enabled.")
 
+task.wwait(2)
+
+
 -- Create the Fluent UI if it doesn't exist, otherwise just make the button
 
 -- Parent script references (assuming they are in the same script)
