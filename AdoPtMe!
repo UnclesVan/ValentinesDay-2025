@@ -3,6 +3,8 @@
 -- GUI Elements (created dynamically)
 local Player = game.Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
+
+-- Create GUI Elements
 local ba = Instance.new("ScreenGui")
 local ca = Instance.new("TextLabel") -- Main Label
 local ab = Instance.new("TextLabel") -- Status Label
@@ -10,51 +12,48 @@ local afkTimerLabel = Instance.new("TextLabel") -- Timer label
 
 -- Properties
 ba.Name = "ba"
-ca.Name = "ca"
-ab.Name = "ab"
-afkTimerLabel.Name = "afkTimerLabel"
-
--- Parent GUI to PlayerGui instead of CoreGui
 ba.Parent = PlayerGui
 ba.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- Create GUI elements
+-- Setup main label properties
+ca.Name = "ca"
 ca.Parent = ba
 ca.Active = true
-ca.BackgroundColor3 = Color3.new(0, 0, 0) -- Transparent background
 ca.BackgroundTransparency = 1
-ca.Position = UDim2.new(0.01, 0, 0.01, 0) -- Top-left position (adjust offset as needed)
-ca.Size = UDim2.new(0, 500, 0, 120) -- Larger text size
+ca.Position = UDim2.new(0.01, 0, 0.01, 0)
+ca.Size = UDim2.new(0, 500, 0, 120)
 ca.Font = Enum.Font.SourceSansSemibold
 ca.Text = "Anti AFK Script"
-ca.TextColor3 = Color3.new(0, 1, 0) -- Green text color
-ca.TextSize = 64 -- Larger text size
+ca.TextColor3 = Color3.new(0, 1, 0)
+ca.TextSize = 64
 ca.TextStrokeTransparency = 0
 ca.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 ca.TextXAlignment = Enum.TextXAlignment.Left
 
+-- Setup status label properties
+ab.Name = "ab"
 ab.Parent = ba
-ab.BackgroundColor3 = Color3.new(0, 0, 0) -- Transparent background
 ab.BackgroundTransparency = 1
-ab.Position = UDim2.new(0.01, 0, 0.2, 0) -- Position below the main label
-ab.Size = UDim2.new(0, 500, 0, 120) -- Larger size
+ab.Position = UDim2.new(0.01, 0, 0.2, 0)
+ab.Size = UDim2.new(0, 500, 0, 120)
 ab.Font = Enum.Font.ArialBold
 ab.Text = "Status: Active"
-ab.TextColor3 = Color3.new(0, 1, 0) -- Green text color
+ab.TextColor3 = Color3.new(0, 1, 0)
 ab.TextStrokeTransparency = 0
 ab.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-ab.TextSize = 64 -- Increased to 64
+ab.TextSize = 64
 ab.TextXAlignment = Enum.TextXAlignment.Left
 
+-- Setup AFK timer label properties
+afkTimerLabel.Name = "afkTimerLabel"
 afkTimerLabel.Parent = ba
-afkTimerLabel.BackgroundColor3 = Color3.new(0, 0, 0)
 afkTimerLabel.BackgroundTransparency = 1
-afkTimerLabel.Position = UDim2.new(0.01, 0, 0.39, 0) -- Below the status label
-afkTimerLabel.Size = UDim2.new(0, 500, 0, 120) -- Larger size
+afkTimerLabel.Position = UDim2.new(0.01, 0, 0.39, 0)
+afkTimerLabel.Size = UDim2.new(0, 500, 0, 120)
 afkTimerLabel.Font = Enum.Font.Arial
 afkTimerLabel.Text = "Total Time: 0s"
-afkTimerLabel.TextColor3 = Color3.new(0, 1, 0) -- Green text color
-afkTimerLabel.TextSize = 64 -- All text size now 64
+afkTimerLabel.TextColor3 = Color3.new(0, 1, 0)
+afkTimerLabel.TextSize = 64
 afkTimerLabel.TextStrokeTransparency = 0
 afkTimerLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 afkTimerLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -72,9 +71,10 @@ local function updateAfkTimer()
     end
 end
 
--- Start the timer loop in a separate thread
+-- Start the timer loop in a coroutine
 coroutine.wrap(updateAfkTimer)()
 
+-- Function to handle when the player becomes idle
 local function onIdled()
     -- Simulate clicking the second mouse button (right-click)
     VirtualUser:CaptureController()
@@ -91,21 +91,16 @@ Player.Idled:Connect(onIdled)
 print("Anti AFK has been enabled.")
 
 -- Create the Fluent UI if it doesn't exist
-local Player = game.Players.LocalPlayer  -- Ensure Player is set
-local ValentinesEvent -- Placeholder
+local ValentinesEvent  -- Placeholder
 
 -- Check if the Fluent UI is already loaded
-if _G.FluentLoaded then  -- Use a global flag
-    local Fluent = _G.Fluent
-    local SaveManager = _G.SaveManager
-    local InterfaceManager = _G.InterfaceManager
-    local Window = _G.FluentWindow
-    createFloatingButton() -- Function needs to be defined later
-else
-    -- Fluent UI doesn't exist, load everything
+if not _G.FluentLoaded then  -- Use a global flag
+    -- Load Fluent UI and related addons
     local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
     local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
     local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+    
+    -- Store loaded modules in the global namespace
     _G.Fluent = Fluent
     _G.SaveManager = SaveManager
     _G.InterfaceManager = InterfaceManager
@@ -129,7 +124,7 @@ else
         ValentinesTeleports = Window:AddTab({ Title = "Teleports", Icon = "map" }), 
     }
 
-    -- Local Variables
+    -- Local Variables for Teleporting
     local teleportSpeed = 1 -- Initial teleport speed (seconds between teleports)
     local teleporting = false  -- State to keep track of whether we are teleporting
 
@@ -164,7 +159,6 @@ else
             end
 
             teleportToCupid() -- Teleport to Cupid frequently
-
             task.wait(teleportSpeed)
         end
     end
@@ -176,7 +170,7 @@ else
         local LargeTextLabel = Player.PlayerGui.HintApp:FindFirstChild("LargeTextLabel")
         if not LargeTextLabel then return end
         
-        -- Setting message based on state
+        -- Set message based on state
         if ValentinesEvent.IsToggled then
             LargeTextLabel.Text = "You Are Currently In a Valentines Event."
         else
@@ -220,7 +214,7 @@ else
 
     ValentinesEventToggle:OnChanged(function(state)
         ValentinesEvent = { IsToggled = state }
-        toggleTeleportation() -- Now this function is safely defined
+        toggleTeleportation() -- Update teleportation message
     end)
 
     -- Notify user
@@ -230,10 +224,6 @@ else
         Duration = 8
     })
 
-    SaveManager:LoadAutoloadConfig()
-    _G.FluentLoaded = true
-end
-
-    SaveManager:LoadAutoloadConfig()
+    SaveManager:LoadAutoloadConfig() -- Ensure configurations are loaded
     _G.FluentLoaded = true
 end
