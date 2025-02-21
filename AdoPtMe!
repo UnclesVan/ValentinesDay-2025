@@ -91,7 +91,8 @@ Player.Idled:Connect(onIdled)
 print("Anti AFK has been enabled.")
 
 -- Create the Fluent UI if it doesn't exist
-local ValentinesEvent, ValentinesEventTeleport, TeleportSpeed -- Placeholders
+local Player = game.Players.LocalPlayer  -- Ensure Player is set
+local ValentinesEvent -- Placeholder
 
 -- Check if the Fluent UI is already loaded
 if _G.FluentLoaded then  -- Use a global flag
@@ -130,11 +131,11 @@ else
 
     -- Local Variables
     local teleportSpeed = 1 -- Initial teleport speed (seconds between teleports)
-    local stopTeleportFlag = { Value = false }  -- Table to hold the flag so it can be modified by reference
+    local teleporting = false  -- State to keep track of whether we are teleporting
 
     -- Function to teleport to Cupid
     local function teleportToCupid()
-        if not ValentinesEvent or not ValentinesEvent.IsToggled then return end
+        if not ValentinesEvent or not ValentinesEvent.IsToggled or not teleporting then return end
 
         for _,v in pairs(workspace.StaticMap.Valentines2025.Cupid:GetDescendants()) do
             if v.Name == "CupidClient" or v.Name == "CupidServer" then
@@ -147,26 +148,9 @@ else
         end
     end
 
-    -- Function to toggle the teleportation
-    local function toggleTeleportation()
-        if not ValentinesEvent or not Player.PlayerGui:FindFirstChild("HintApp") then return end
-
-        local LargeTextLabel = Player.PlayerGui.HintApp:FindFirstChild("LargeTextLabel")
-        if not LargeTextLabel then return end
-        
-        if ValentinesEvent.IsToggled then
-            LargeTextLabel.Text = "You Are Currently In a Valentines Event."
-        else
-            LargeTextLabel.Text = "You Are Not in a Valentines Event."
-        end
-    end
-
     -- Function to teleport to locations
-    local function teleportToLocations(stopFlag)
-        while true do
-            if stopFlag and stopFlag.Value then break end
-
-            -- Teleport to various locations (e.g., roses, hearts)
+    local function teleportToLocations()
+        while teleporting do
             for _, v in pairs(workspace.StaticMap.Valentines2025:GetDescendants()) do
                 if v:IsA("BasePart") and v.Name == "Collider" then
                     local character = Player.Character
@@ -184,7 +168,22 @@ else
             task.wait(teleportSpeed)
         end
     end
-    
+
+    -- Function to toggle the teleportation message
+    local function toggleTeleportation()
+        if not ValentinesEvent or not Player.PlayerGui:FindFirstChild("HintApp") then return end
+
+        local LargeTextLabel = Player.PlayerGui.HintApp:FindFirstChild("LargeTextLabel")
+        if not LargeTextLabel then return end
+        
+        -- Setting message based on state
+        if ValentinesEvent.IsToggled then
+            LargeTextLabel.Text = "You Are Currently In a Valentines Event."
+        else
+            LargeTextLabel.Text = "You Are Not in a Valentines Event."
+        end
+    end
+
     -- Teleport Toggle
     local ValentinesTeleportToggle = Tabs.ValentinesTeleports:AddToggle("ValentinesTeleportToggle", {
         Title = "Teleport to Valentines Locations",
@@ -193,11 +192,9 @@ else
     })
 
     ValentinesTeleportToggle:OnChanged(function(state)
+        teleporting = state  -- Update the teleporting state
         if state then
-            stopTeleportFlag.Value = false
-            task.spawn(teleportToLocations, stopTeleportFlag)
-        else
-            stopTeleportFlag.Value = true -- Signal to stop
+            task.spawn(teleportToLocations) -- Start teleporting
         end
     end)
 
@@ -214,76 +211,6 @@ else
         end
     })
 
-    -- Remove Background Objects Functionality
-    local function removeBackgroundObjects()
-        while true do
-            task.wait(1)
-
-            local objectsToRemove = {
-                "Trampolines", "Seesaw", "SwingSets", "Nursery", "Roundabout"
-            }
-            for _, objectName in ipairs(objectsToRemove) do
-                pcall(function()
-                    for _, v in pairs(workspace.StaticMap.Park:GetChildren()) do
-                        if v.Name == objectName then
-                            v:Destroy()
-                        end
-                    end
-                end)
-            end
-        end
-    end
-
-    -- Start removing background objects
-    task.spawn(removeBackgroundObjects)
-
-    -- Floating Button Creation
-    local function createFloatingButton()
-        local buttonSize = UDim2.new(0, 40, 0, 40)
-        local button = Instance.new("ImageButton")
-        button.Parent = PlayerGui
-        button.Size = buttonSize
-        button.Position = UDim2.new(0.5, -20, 0, 50)
-        button.AnchorPoint = Vector2.new(0.5, 0)
-        button.Image = "rbxasset://textures/ui/LuaIcon.png"
-        button.ImageTransparency = 0.2
-        button.ImageColor3 = Color3.new(1, 1, 1)
-        button.BorderSizePixel = 0
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0.5, 0)
-        corner.Parent = button
-
-        -- Handle button click to show/hide the UI
-        button.MouseButton1Down:Connect(function()
-            Window:SetVisible(not Window:IsVisible())
-        end)
-
-        return button
-    end
-
-    createFloatingButton()
-
-    -- Function to set up functionality for minimizing
-    if Window.Minimized then
-        Window.Minimized:Connect(function() floatingButton.Visible = true end)
-    end
-    if Window.Unminimized then
-        Window.Unminimized:Connect(function() floatingButton.Visible = false end)
-    end
-
-    -- Hand the library over to managers
-    SaveManager:SetLibrary(Fluent)
-    InterfaceManager:SetLibrary(Fluent)
-    SaveManager:IgnoreThemeSettings()
-    SaveManager:SetIgnoreIndexes({})
-    InterfaceManager:SetFolder("FluentScriptHub")
-    SaveManager:SetFolder("FluentScriptHub/specific-game")
-    InterfaceManager:BuildInterfaceSection(Tabs.Settings)
-    SaveManager:BuildConfigSection(Tabs.Settings)
-
-    Window:SelectTab(1) -- Select the first tab
-
     -- Valentines Event Toggle
     local ValentinesEventToggle = Tabs.Main:AddToggle("ValentinesEventToggle", {
         Title = "Valentines Event",
@@ -293,7 +220,7 @@ else
 
     ValentinesEventToggle:OnChanged(function(state)
         ValentinesEvent = { IsToggled = state }
-        toggleTeleportation()
+        toggleTeleportation() -- Now this function is safely defined
     end)
 
     -- Notify user
@@ -302,6 +229,10 @@ else
         Content = "The script has been loaded.",
         Duration = 8
     })
+
+    SaveManager:LoadAutoloadConfig()
+    _G.FluentLoaded = true
+end
 
     SaveManager:LoadAutoloadConfig()
     _G.FluentLoaded = true
