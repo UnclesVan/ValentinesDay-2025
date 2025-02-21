@@ -90,140 +90,160 @@ Player.Idled:Connect(onIdled)
 
 print("Anti AFK has been enabled.")
 
--- Create the Fluent UI if it doesn't exist
-local ValentinesEvent  -- Placeholder
+while wait () do
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 
--- Check if the Fluent UI is already loaded
-if not _G.FluentLoaded then  -- Use a global flag
-    -- Load Fluent UI and related addons
-    local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-    local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-    local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
-    
-    -- Store loaded modules in the global namespace
-    _G.Fluent = Fluent
-    _G.SaveManager = SaveManager
-    _G.InterfaceManager = InterfaceManager
-    
-    -- Create Main UI Window
-    local Window = Fluent:CreateWindow({
-        Title = "Fluent " .. Fluent.Version,
-        SubTitle = "by dawid",
-        TabWidth = 160,
-        Size = UDim2.fromOffset(580, 460),
-        Acrylic = true,
-        Theme = "Dark",
-        MinimizeKey = Enum.KeyCode.LeftControl
-    })
-    _G.FluentWindow = Window
+--Required Rose Path
+local valentinesFolder = Workspace:FindFirstChild("StaticMap") and Workspace.StaticMap:FindFirstChild("Valentines2025")
 
-    -- Create Tabs
-    local Tabs = {
-        Main = Window:AddTab({ Title = "Main", Icon = "" }),
-        Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
-        ValentinesTeleports = Window:AddTab({ Title = "Teleports", Icon = "map" }), 
-    }
+--Check if StaticMap exists
+if not valentinesFolder then
+    warn("Valentines2025 folder not found. Script will not run.")
+    return
+end
 
-    -- Local Variables for Teleporting
-    local teleportSpeed = 1 -- Initial teleport speed (seconds between teleports)
-    local teleporting = false  -- State to keep track of whether we are teleporting
+local rosePath = valentinesFolder:FindFirstChild("Rose_Paths")
+local heartsFolder = valentinesFolder:FindFirstChild("Hearts")
 
-    -- Function to teleport to Cupid
-    local function teleportToCupid()
-        if not ValentinesEvent or not ValentinesEvent.IsToggled or not teleporting then return end
+local allRoseParts = {}
+local allHeartParts = {}
+local teleportFrequency = 1
+local roseCounter = 0
+local heartCheckInterval = 1 -- Check for hearts every 5 seconds
 
-        for _,v in pairs(workspace.StaticMap.Valentines2025.Cupid:GetDescendants()) do
-            if v.Name == "CupidClient" or v.Name == "CupidServer" then
-                local character = Player.Character
-                if character and character:FindFirstChild("HumanoidRootPart") then
-                    character.HumanoidRootPart.CFrame = v.CFrame
-                    task.wait(teleportSpeed)
+local function getAllPartsRecursive(parent, partsTable)
+    for _, child in ipairs(parent:GetChildren()) do
+        if child:IsA("BasePart") then
+            table.insert(partsTable, child)
+        elseif child:IsA("Model") or child:IsA("Folder") then
+            getAllPartsRecursive(child, partsTable)
+        end
+    end
+end
+
+-- Get all rose parts
+if rosePath then
+    getAllPartsRecursive(rosePath, allRoseParts)
+    print("Using Rose_Paths as primary path.")
+else
+    warn("Rose_Paths is nil! No primary path to use.")
+    return -- Exit the script, no paths to follow
+end
+
+local function updateHeartParts()
+    allHeartParts = {} -- Clear previous heart parts
+
+    if heartsFolder then
+        for _, heart in ipairs(heartsFolder:GetChildren()) do
+            if heart.Name == "CupidHeart" then
+                local collider = heart:FindFirstChild("Collider")
+                if collider then
+                    getAllPartsRecursive(collider, allHeartParts)
                 end
             end
         end
+        print("Found CupidHearts. Will teleport to hearts occasionally.")
+    else
+        print("Hearts folder not found. Only teleporting to roses.")
+    end
+end
+
+local function teleportSmoothly(humanoidRootPart, targetCFrame, duration)
+    if not humanoidRootPart then return end
+
+    local startCFrame = humanoidRootPart.CFrame
+    local startTime = os.time()
+    local elapsedTime = 0
+
+    while elapsedTime < duration do
+        elapsedTime = os.time() - startTime
+        local alpha = math.min(elapsedTime / duration, 1)
+        humanoidRootPart.CFrame = startCFrame:Lerp(targetCFrame, alpha)
+        RunService.Heartbeat:Wait()
     end
 
-    -- Function to teleport to locations
-    local function teleportToLocations()
-        while teleporting do
-            for _, v in pairs(workspace.StaticMap.Valentines2025:GetDescendants()) do
-                if v:IsA("BasePart") and v.Name == "Collider" then
-                    local character = Player.Character
-                    if character and character:FindFirstChild("HumanoidRootPart") then
-                        character.HumanoidRootPart.CFrame = v.CFrame
-                        task.wait(teleportSpeed)
+    humanoidRootPart.CFrame = targetCFrame
+end
+
+local function getRandomHeartPart()
+    if #allHeartParts == 0 then return nil end
+    local randomIndex = math.random(1, #allHeartParts)
+    return allHeartParts[randomIndex]
+end
+
+-- Teleport logic
+local player = game.Players.LocalPlayer
+
+if player and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+    local humanoidRootPart = player.Character:FindFirstChild("HumanoidRootPart")
+
+    -- Initial check for heart parts
+    updateHeartParts()
+
+    -- Teleport Roses
+    for _, rosePart in ipairs(allRoseParts) do
+        if rosePart then
+            roseCounter = roseCounter + 1
+
+            -- Check for heart parts periodically
+            if roseCounter % (teleportFrequency) == 0 then
+                if roseCounter % (teleportFrequency * (heartCheckInterval * 10)) == 0 then --Longer interval for re-checking heart parts
+                    updateHeartParts()
+                end
+
+                if #allHeartParts > 0 then
+                    local heartPart = getRandomHeartPart()
+                    if heartPart then
+                        print("Teleporting to a random Heart part!")
+                        teleportSmoothly(humanoidRootPart, heartPart.CFrame + Vector3.new(0, 2, 0), 0.1)
                     else
-                        warn("Character or HumanoidRootPart not found.")
+                        print("No valid heart part found. Teleporting to rose.")
+                        teleportSmoothly(humanoidRootPart, rosePart.CFrame + Vector3.new(0, 2, 0), 0.1) -- Fallback to rose
+                    end
+                else
+                    -- No heart parts available, teleport to rose
+                    teleportSmoothly(humanoidRootPart, rosePart.CFrame + Vector3.new(0, 2, 0), 0.1)
+                end
+            else
+                --Just Teleport to Rose Parts
+                teleportSmoothly(humanoidRootPart, rosePart.CFrame + Vector3.new(0, 2, 0), 0.1)
+            end
+            task.wait(0.05) -- Short delay
+        else
+            warn("Rose part not found!")
+        end
+    end
+
+    -- Teleport to all CupidHearts
+    if heartsFolder then
+        for _, heart in ipairs(heartsFolder:GetChildren()) do
+            if heart.Name == "CupidHeart" then
+                local collider = heart:FindFirstChild("Collider")
+                if collider then
+                    for _, part in ipairs(collider:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            print("Teleporting to CupidHeart!")
+                            teleportSmoothly(humanoidRootPart, part.CFrame + Vector3.new(0, 2, 0), 0.1)
+                            task.wait(0.05) -- Short delay
+                        end
                     end
                 end
             end
-
-            teleportToCupid() -- Teleport to Cupid frequently
-            task.wait(teleportSpeed)
         end
     end
 
-    -- Function to toggle the teleportation message
-    local function toggleTeleportation()
-        if not ValentinesEvent or not Player.PlayerGui:FindFirstChild("HintApp") then return end
-
-        local LargeTextLabel = Player.PlayerGui.HintApp:FindFirstChild("LargeTextLabel")
-        if not LargeTextLabel then return end
-        
-        -- Set message based on state
-        if ValentinesEvent.IsToggled then
-            LargeTextLabel.Text = "You Are Currently In a Valentines Event."
-        else
-            LargeTextLabel.Text = "You Are Not in a Valentines Event."
+    -- Your new code: Teleport to all colliders directly
+    for i, v in pairs(workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
+        if v.Name == "Collider" and v:IsA("BasePart") then  -- Added isA check
+            humanoidRootPart.CFrame = v.CFrame
+            task.wait(1)  -- Replaced wait() with task.wait()
         end
     end
+else
+    warn("Player or HumanoidRootPart not found!")
+end
 
-    -- Teleport Toggle
-    local ValentinesTeleportToggle = Tabs.ValentinesTeleports:AddToggle("ValentinesTeleportToggle", {
-        Title = "Teleport to Valentines Locations",
-        Default = false,
-        Description = "Teleports to various Valentine-themed locations."
-    })
+print("Teleportation sequence complete (or attempted).")
 
-    ValentinesTeleportToggle:OnChanged(function(state)
-        teleporting = state  -- Update the teleporting state
-        if state then
-            task.spawn(teleportToLocations) -- Start teleporting
-        end
-    end)
-
-    -- Teleport Speed Slider
-    Tabs.ValentinesTeleports:AddSlider("TeleportSpeedSlider", {
-        Title = "Teleport Speed",
-        Description = "Adjust the speed of the teleports (lower value = faster).",
-        Default = 1,
-        Min = 0.1,
-        Max = 5,
-        Rounding = 0.1,
-        Callback = function(value)
-            teleportSpeed = value
-        end
-    })
-
-    -- Valentines Event Toggle
-    local ValentinesEventToggle = Tabs.Main:AddToggle("ValentinesEventToggle", {
-        Title = "Valentines Event",
-        Default = false,
-        Description = "Toggles Valentines Event."
-    })
-
-    ValentinesEventToggle:OnChanged(function(state)
-        ValentinesEvent = { IsToggled = state }
-        toggleTeleportation() -- Update teleportation message
-    end)
-
-    -- Notify user
-    Fluent:Notify({
-        Title = "Fluent",
-        Content = "The script has been loaded.",
-        Duration = 8
-    })
-
-    SaveManager:LoadAutoloadConfig() -- Ensure configurations are loaded
-    _G.FluentLoaded = true
 end
