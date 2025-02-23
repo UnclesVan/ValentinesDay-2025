@@ -119,7 +119,7 @@ local Tabs = {
 local Options = Fluent.Options
 local shopGui -- Variable to hold the shop GUI instance
 
--- Continuous monitoring and removal of specified models
+-- Continuous monitoring and removal of specified models.
 local function monitorAndRemoveModels()
     while true do
         task.wait(1)  -- Check every second
@@ -134,11 +134,10 @@ local function monitorAndRemoveModels()
             Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("Roundabout")
         }
 
-        -- Iterate through all models and remove them if found
         for _, model in ipairs(modelsToRemove) do
             if model then
-                model:Destroy()  -- Remove the model if found
-                print("Removed model:", model:GetFullName())  -- Log the removal
+                model:Destroy() -- Remove the model if found
+                print("Removed model:", model:GetFullName()) -- Log the removal
             end
         end
 
@@ -147,15 +146,15 @@ local function monitorAndRemoveModels()
         if doorsFolder then
             for _, door in ipairs(doorsFolder:GetChildren()) do
                 if door:IsA("Model") then
-                    door:Destroy()  -- Remove the model if it is a Model
-                    print("Removed door model:", door:GetFullName())  -- Log the removal
+                    door:Destroy() -- Remove the model if it is a Model
+                    print("Removed door model:", door:GetFullName()) -- Log the removal
                 end
             end
         end
     end
 end
 
--- Start the monitoring function in a new coroutine
+-- Start the monitoring function in a new coroutine.
 coroutine.wrap(monitorAndRemoveModels)()
 
 -- Create Shop GUI function
@@ -335,7 +334,6 @@ local function createShopGui()
                     end)
 
                     if success then
-                        -- Only update stock if the purchase was successful
                         item.stock = item.stock - buyCount
                         availableSign.Text = item.stock <= 0 and "OUT OF STOCK" or "AVAILABLE" -- Update availability
                         textbox.Text = "" -- Clear the textbox after a successful purchase
@@ -363,125 +361,10 @@ local function createShopGui()
     end
 end
 
--- Function to dehash remotes when button is pressed
-local function dehashRemotes()
-    local Fsys = require(game.ReplicatedStorage:WaitForChild("Fsys")).load
-
-    -- Get the init function from RouterClient
-    local initFunction = Fsys("RouterClient").init
-
-    -- Folder containing the remotes to track
-    local remoteFolder = game.ReplicatedStorage:WaitForChild("API")
-
-    -- A flag to ensure we print only once during the initial scan
-    local printedOnce = false
-
-    -- Function to inspect upvalues and identify remotes
-    local function inspectUpvalues()
-        local remotes = {} -- Table to collect remotes
-
-        for i = 1, math.huge do
-            local success, upvalue = pcall(getupvalue, initFunction, i)
-            if not success then
-                break
-            end
-            
-            -- If the upvalue is a table, let's check its contents
-            if typeof(upvalue) == "table" then
-                for k, v in pairs(upvalue) do
-                    -- Check for RemoteEvents, RemoteFunctions, BindableEvents, and BindableFunctions
-                    if typeof(v) == "Instance" then
-                        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") or v:IsA("BindableEvent") or v:IsA("BindableFunction") then
-                            -- Log the key, type of value, and value
-                            table.insert(remotes, {key = k, remote = v})
-                            -- If it's the first time scanning, print remote information
-                            if not printedOnce then
-                                print("Key: " .. k .. " Type: " .. typeof(k) .. ", Value Type: " .. typeof(v))
-                                print("Found remote: " .. v:GetFullName())
-                            end
-                        end
-                    end
-                end
-            end
-        end
-
-        return remotes
-    end
-
-    -- Function to rename remotes based on their key
-    local function rename(remote, key)
-        local nameParts = string.split(key, "/") -- Split the key by "/"
-        if #nameParts > 1 then
-            local remotename = table.concat(nameParts, "/", 1, 2) -- Join the first two parts
-            remote.Name = remotename
-        else
-            warn("Invalid key format for remote: " .. key) -- Notify if the key format is incorrect
-        end
-    end
-
-    -- Function to rename all existing remotes in the folder
-    local function renameExistingRemotes()
-        local remotes = inspectUpvalues()
-
-        -- Rename all collected remotes based on the key
-        for _, entry in ipairs(remotes) do
-            rename(entry.remote, entry.key)
-        end
-    end
-
-    -- Function to display dehashed message
-    local function displayDehashedMessage()
-        local uiElement = game:GetService("Players").LocalPlayer.PlayerGui.HintApp.LargeTextLabel
-        uiElement.Text = "Remotes have been Dehashed!"
-        uiElement.TextColor3 = Color3.fromRGB(0, 255, 0) -- Set text color to green
-        wait(3)
-        uiElement.Text = ""
-        uiElement.TextColor3 = Color3.fromRGB(255, 255, 255) -- Reset text color to default (white)
-    end
-
-    -- Monitor for new remotes added to the folder
-    local function monitorForNewRemotes()
-        remoteFolder.ChildAdded:Connect(function(child)
-            if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") or child:IsA("BindableEvent") or child:IsA("BindableFunction") then
-                print("New remote added: " .. child:GetFullName())
-                -- Check and rename the new remote
-                local remotes = inspectUpvalues()
-                for _, entry in ipairs(remotes) do
-                    rename(entry.remote, entry.key)
-                end
-            end
-        end)
-    end
-
-    -- Coroutine for periodic check without freezing
-    local function periodicCheck()
-        while true do
-            task.wait(10) -- Check every 10 seconds (can adjust based on your needs)
-            -- Scan and rename existing remotes periodically
-            pcall(renameExistingRemotes)
-        end
-    end
-
-    -- Start the periodic check in a coroutine (non-blocking)
-    coroutine.wrap(periodicCheck)()
-
-    -- Initial scan and rename for all existing remotes (print once)
-    renameExistingRemotes()
-
-    -- Display dehashed message
-    displayDehashedMessage()
-
-    -- Set the flag to prevent printing more than once
-    printedOnce = true
-
-    print("Script initialized and monitoring remotes.")
-end
-
--- Teleportation Variables
 local isTeleportingEnabled = false
 local teleportFrequency = 0.5
 local allRoseParts = {}
-local allHeartParts = {}
+local allHeartColliders = {}
 
 local function getAllPartsRecursive(parent, partsTable)
     for _, child in ipairs(parent:GetChildren()) do
@@ -493,21 +376,22 @@ local function getAllPartsRecursive(parent, partsTable)
     end
 end
 
-local function teleportSmoothly(humanoidRootPart, targetCFrame, duration)
-    if not humanoidRootPart then return end
-
-    local startCFrame = humanoidRootPart.CFrame
-    local startTime = os.clock()
-    local elapsedTime = 0
-
-    while elapsedTime < duration do
-        elapsedTime = os.clock() - startTime
-        local alpha = math.min(elapsedTime / duration, 1)
-        humanoidRootPart.CFrame = startCFrame:Lerp(targetCFrame, alpha)
-        RunService.Heartbeat:Wait()
+local function teleportToColliders(humanoidRootPart)
+    -- Teleport to each Collider in Roses
+    for _, v in pairs(Workspace.StaticMap.Valentines2025.Roses:GetDescendants()) do
+        if v.Name == "Collider" and humanoidRootPart then
+            humanoidRootPart.CFrame = v.CFrame
+            print("Teleported to Rose Collider at:", v.Position)
+        end
     end
 
-    humanoidRootPart.CFrame = targetCFrame
+    -- Teleport to each Collider in Hearts
+    for _, v in pairs(Workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
+        if v.Name == "Collider" and humanoidRootPart then
+            humanoidRootPart.CFrame = v.CFrame
+            print("Teleported to Heart Collider at:", v.Position)
+        end
+    end
 end
 
 local function startTeleporting()
@@ -520,32 +404,14 @@ local function startTeleporting()
         return
     end
 
-    local rosePath = valentinesFolder:FindFirstChild("Rose_Paths")
-    if rosePath then
-        getAllPartsRecursive(rosePath, allRoseParts)
-        print("Using Rose_Paths for teleportation.")
-    else
-        warn("Rose_Paths is nil! No primary path to use.")
-        return
-    end
-
-    -- Main teleportation loop
+    -- Main teleportation loop.
     while isTeleportingEnabled do
-        for _, rosePart in ipairs(allRoseParts) do
-            if not isTeleportingEnabled then break end -- Check if teleporting is still enabled
-
-            if rosePart and humanoidRootPart then
-                teleportSmoothly(humanoidRootPart, rosePart.CFrame + Vector3.new(0, 2, 0), 0.1)
-                task.wait(teleportFrequency)
-            else
-                warn("Rose part not found!")
-            end
-        end
-        task.wait(0.05) -- Add a small break to prevent excessive processing in the loop
+        teleportToColliders(humanoidRootPart) -- Call the function to teleport instantly to colliders
+        task.wait(0.05) -- Small break to prevent excessive processing in the loop
     end
 end
 
--- Toggle for teleportation
+-- Toggle for teleportation.
 local teleportToggle = Tabs.ValentinesEvent:AddToggle("EnableTeleportation", {
     Title = "Enable Teleportation",
     Default = false
@@ -561,7 +427,7 @@ teleportToggle:OnChanged(function()
     end
 end)
 
--- Slider for speed control
+-- Slider for speed control.
 local speedControl = Tabs.ValentinesEvent:AddSlider("TeleportSpeedSlider", {
     Title = "Teleport Frequency",
     Description = "Adjust the speed of teleportation (lower values = faster)",
@@ -575,15 +441,132 @@ local speedControl = Tabs.ValentinesEvent:AddSlider("TeleportSpeedSlider", {
     end
 })
 
--- Shop toggle implementation
+-- Shop toggle implementation.
 local Toggle = Tabs.Shop:AddToggle("ShopToggle", { Title = "Enable Shop", Default = false })
 
--- Button for "Dehash Remotes"
+-- Button for "Dehash Remotes".
 Tabs.Shop:AddButton({
     Title = "Dehash Remotes",
     Description = "Must Do when using shop",
     Callback = function()
         print("Dehash Remotes button clicked!")
+
+
+local Fsys = require(game.ReplicatedStorage:WaitForChild("Fsys")).load
+
+-- Get the init function from RouterClient
+local initFunction = Fsys("RouterClient").init
+
+-- Folder containing the remotes to track
+local remoteFolder = game.ReplicatedStorage:WaitForChild("API")
+
+-- A flag to ensure we print only once during the initial scan
+local printedOnce = false
+
+-- Function to inspect upvalues and identify remotes
+local function inspectUpvalues()
+    local remotes = {}  -- Table to collect remotes
+
+    for i = 1, math.huge do
+        local success, upvalue = pcall(getupvalue, initFunction, i)
+        if not success then
+            break
+        end
+        
+        -- If the upvalue is a table, let's check its contents
+        if typeof(upvalue) == "table" then
+            for k, v in pairs(upvalue) do
+                -- Check for RemoteEvents, RemoteFunctions, BindableEvents, and BindableFunctions
+                if typeof(v) == "Instance" then
+                    if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") or v:IsA("BindableEvent") or v:IsA("BindableFunction") then
+                        -- Log the key, type of value, and value
+                        table.insert(remotes, {key = k, remote = v})
+                        -- If it's the first time scanning, print remote information
+                        if not printedOnce then
+                            print("Key: " .. k .. " Type: " .. typeof(k) .. ", Value Type: " .. typeof(v))
+                            print("Found remote: " .. v:GetFullName())
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return remotes
+end
+
+-- Function to rename remotes based on their key
+local function rename(remote, key)
+    local nameParts = string.split(key, "/")  -- Split the key by "/"
+    if #nameParts > 1 then
+        local remotename = table.concat(nameParts, "/", 1, 2)  -- Join the first two parts
+        remote.Name = remotename
+    else
+        warn("Invalid key format for remote: " .. key)  -- Notify if the key format is incorrect
+    end
+end
+
+-- Function to rename all existing remotes in the folder
+local function renameExistingRemotes()
+    local remotes = inspectUpvalues()
+
+    -- Rename all collected remotes based on the key
+    for _, entry in ipairs(remotes) do
+        rename(entry.remote, entry.key)
+    end
+end
+
+-- Function to display dehashed message
+local function displayDehashedMessage()
+    local uiElement = game:GetService("Players").LocalPlayer.PlayerGui.HintApp.LargeTextLabel
+    uiElement.Text = "Remotes has been Dehashed!"
+    uiElement.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
+    wait(3)
+    uiElement.Text = ""
+    uiElement.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
+end
+
+-- Monitor for new remotes added to the folder
+local function monitorForNewRemotes()
+    remoteFolder.ChildAdded:Connect(function(child)
+        if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") or child:IsA("BindableEvent") or child:IsA("BindableFunction") then
+            print("New remote added: " .. child:GetFullName())
+            -- Check and rename the new remote
+            local remotes = inspectUpvalues()
+            for _, entry in ipairs(remotes) do
+                rename(entry.remote, entry.key)
+            end
+        end
+    end)
+end
+
+-- Coroutine for periodic check without freezing
+local function periodicCheck()
+    while true do
+        task.wait(10)  -- Check every 10 seconds (can adjust based on your needs)
+        -- Scan and rename existing remotes periodically
+        pcall(renameExistingRemotes)
+    end
+end
+
+-- Start the periodic check in a coroutine (non-blocking)
+coroutine.wrap(periodicCheck)()
+
+-- Initial scan and rename for all existing remotes (print once)
+renameExistingRemotes()
+
+-- Display dehashed message
+displayDehashedMessage()
+
+-- Set the flag to prevent printing more than once
+printedOnce = true
+
+print("Script initialized and monitoring remotes.")
+
+
+
+
+
         dehashRemotes()  -- Call the dehash function
     end
 })
@@ -609,5 +592,5 @@ Fluent:Notify({
     Duration = 8
 })
 
--- Load configuration
+-- Load configuration.
 SaveManager:LoadAutoloadConfig()
