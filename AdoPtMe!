@@ -127,28 +127,39 @@ local function monitorAndRemoveModels()
         -- List of models and paths to remove
         local modelsToRemove = {
             Workspace:FindFirstChild("ServerSidedMapSeats"),
-            Workspace:FindFirstChild("Interiors") and Workspace.Interiors:FindFirstChild("MainMap!Default") and Workspace.Interiors["MainMap!Default"]:FindFirstChild("Doors"),
+            Workspace:FindFirstChild("Interiors") and Workspace.Interiors:FindFirstChild("MainMap!Default") and
+            Workspace.Interiors["MainMap!Default"]:FindFirstChild("Doors"),
             Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("Trampolines"),
             Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("SwingSets"),
             Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("Seesaw"),
-            Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("Roundabout")
+            Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("Roundabout"),
         }
 
         for _, model in ipairs(modelsToRemove) do
             if model then
-                model:Destroy() -- Remove the model if found
-                print("Removed model:", model:GetFullName()) -- Log the removal
-            end
-        end
-
-        -- Additionally, remove all models in 'Doors'
-        local doorsFolder = Workspace.Interiors:FindFirstChild("MainMap!Default") and Workspace.Interiors["MainMap!Default"]:FindFirstChild("Doors")
-        if doorsFolder then
-            for _, door in ipairs(doorsFolder:GetChildren()) do
-                if door:IsA("Model") then
-                    door:Destroy() -- Remove the model if it is a Model
-                    print("Removed door model:", door:GetFullName()) -- Log the removal
+                if model:IsA("Model") or model:IsA("Folder") then
+                    -- If it's the "Doors" folder, remove all its children models.
+                    if model.Name == "Doors" then
+                        for _, door in ipairs(model:GetChildren()) do
+                            if door:IsA("Model") then
+                                door:Destroy()
+                                print("Removed door model:", door:GetFullName())
+                            end
+                        end
+                        print("Removed all models from folder:", model:GetFullName())
+                    else
+                        local success, err = pcall(function()
+                            model:Destroy()
+                        end)
+                        if success then
+                            print("Removed model:", model:GetFullName())
+                        else
+                            warn("Failed to remove model: " .. model:GetFullName() .. " - Reason: " .. err)
+                        end
+                    end
                 end
+            else
+                print("Model not found or missing in the specified path.")
             end
         end
     end
@@ -164,7 +175,7 @@ local function createShopGui()
     -- Create the ScreenGui
     shopGui = Instance.new("ScreenGui")
     shopGui.Name = "ShopScreenGui"
-    shopGui.Parent = player:WaitForChild("PlayerGui") -- Ensure it's parented properly
+    shopGui.Parent = player:WaitForChild("PlayerGui")
 
     -- Create the Main Frame
     local frame = Instance.new("Frame")
@@ -192,7 +203,7 @@ local function createShopGui()
 
     -- Connect the Close Button to hide the GUI
     closeButton.MouseButton1Click:Connect(function()
-        shopGui.Enabled = false -- Hide the GUI instead of destroying it
+        shopGui.Enabled = false
     end)
 
     -- Set up items (same as your existing shop setup)
@@ -329,20 +340,20 @@ local function createShopGui()
                     }
                     -- Attempt the purchase
                     local success, errorMessage = pcall(function()
-                        print("Attempting to buy " .. buyCount .. " of " .. item.name) -- Debug message
+                        print("Attempting to buy " .. buyCount .. " of " .. item.name)
                         game:GetService("ReplicatedStorage").API:FindFirstChild("ShopAPI/BuyItem"):InvokeServer(unpack(args))
                     end)
 
                     if success then
                         item.stock = item.stock - buyCount
-                        availableSign.Text = item.stock <= 0 and "OUT OF STOCK" or "AVAILABLE" -- Update availability
+                        availableSign.Text = item.stock <= 0 and "OUT OF STOCK" or "AVAILABLE"
                         textbox.Text = "" -- Clear the textbox after a successful purchase
-                        print("Purchased " .. buyCount .. " of " .. item.name) -- Success message
+                        print("Purchased " .. buyCount .. " of " .. item.name)
                     else
-                        print("Failed to buy item: " .. (errorMessage or "Unknown Error")) -- Error handling
+                        print("Failed to buy item: " .. (errorMessage or "Unknown Error"))
                     end
                 else
-                    print("Invalid amount! Please enter a valid number.") -- Debug message
+                    print("Invalid amount! Please enter a valid number.")
                 end
             end)
 
@@ -363,21 +374,8 @@ end
 
 local isTeleportingEnabled = false
 local teleportFrequency = 0.5
-local allRoseParts = {}
-local allHeartColliders = {}
-
-local function getAllPartsRecursive(parent, partsTable)
-    for _, child in ipairs(parent:GetChildren()) do
-        if child:IsA("BasePart") then
-            table.insert(partsTable, child)
-        elseif child:IsA("Model") or child:IsA("Folder") then
-            getAllPartsRecursive(child, partsTable)
-        end
-    end
-end
 
 local function teleportToColliders(humanoidRootPart)
-    -- Teleport to each Collider in Roses
     for _, v in pairs(Workspace.StaticMap.Valentines2025.Roses:GetDescendants()) do
         if v.Name == "Collider" and humanoidRootPart then
             humanoidRootPart.CFrame = v.CFrame
@@ -385,7 +383,6 @@ local function teleportToColliders(humanoidRootPart)
         end
     end
 
-    -- Teleport to each Collider in Hearts
     for _, v in pairs(Workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
         if v.Name == "Collider" and humanoidRootPart then
             humanoidRootPart.CFrame = v.CFrame
@@ -398,16 +395,14 @@ local function startTeleporting()
     local player = Players.LocalPlayer
     local humanoidRootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 
-    local valentinesFolder = Workspace:FindFirstChild("StaticMap") and Workspace.StaticMap:FindFirstChild("Valentines2025")
-    if not valentinesFolder then
+    if not Workspace:FindFirstChild("StaticMap") or not Workspace.StaticMap:FindFirstChild("Valentines2025") then
         warn("Valentines2025 folder not found. Script will not run.")
         return
     end
 
-    -- Main teleportation loop.
     while isTeleportingEnabled do
-        teleportToColliders(humanoidRootPart) -- Call the function to teleport instantly to colliders
-        task.wait(0.05) -- Small break to prevent excessive processing in the loop
+        teleportToColliders(humanoidRootPart)
+        task.wait(teleportFrequency) -- Use teleport frequency for timing
     end
 end
 
@@ -450,7 +445,6 @@ Tabs.Shop:AddButton({
     Description = "Must Do when using shop",
     Callback = function()
         print("Dehash Remotes button clicked!")
-
 
 local Fsys = require(game.ReplicatedStorage:WaitForChild("Fsys")).load
 
@@ -565,9 +559,7 @@ print("Script initialized and monitoring remotes.")
 
 
 
-
-
-        dehashRemotes()  -- Call the dehash function
+        dehashRemotes() -- Call the dehash function, ensure this is defined somewhere
     end
 })
 
