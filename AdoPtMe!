@@ -493,22 +493,6 @@ local function getAllPartsRecursive(parent, partsTable)
     end
 end
 
-local function updateHeartParts(heartsFolder)
-    allHeartParts = {}
-    if heartsFolder then
-        for _, heart in ipairs(heartsFolder:GetChildren()) do
-            if heart.Name == "CupidHeart" then
-                local collider = heart:FindFirstChild("Collider")
-                if collider then
-                    getAllPartsRecursive(collider, allHeartParts)
-                end
-            end
-        end
-    else
-        print("Hearts folder not found. Only teleporting to roses.")
-    end
-end
-
 local function teleportSmoothly(humanoidRootPart, targetCFrame, duration)
     if not humanoidRootPart then return end
 
@@ -526,12 +510,6 @@ local function teleportSmoothly(humanoidRootPart, targetCFrame, duration)
     humanoidRootPart.CFrame = targetCFrame
 end
 
-local function getRandomHeartPart()
-    if #allHeartParts == 0 then return nil end
-    local randomIndex = math.random(1, #allHeartParts)
-    return allHeartParts[randomIndex]
-end
-
 local function startTeleporting()
     local player = Players.LocalPlayer
     local humanoidRootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -543,17 +521,13 @@ local function startTeleporting()
     end
 
     local rosePath = valentinesFolder:FindFirstChild("Rose_Paths")
-    local heartsFolder = valentinesFolder:FindFirstChild("Hearts")
-
     if rosePath then
         getAllPartsRecursive(rosePath, allRoseParts)
-        print("Using Rose_Paths as primary path.")
+        print("Using Rose_Paths for teleportation.")
     else
         warn("Rose_Paths is nil! No primary path to use.")
         return
     end
-
-    updateHeartParts(heartsFolder)
 
     -- Main teleportation loop
     while isTeleportingEnabled do
@@ -563,15 +537,10 @@ local function startTeleporting()
             if rosePart and humanoidRootPart then
                 teleportSmoothly(humanoidRootPart, rosePart.CFrame + Vector3.new(0, 2, 0), 0.1)
                 task.wait(teleportFrequency)
-                local heartPart = getRandomHeartPart()
-                if heartPart then
-                    teleportSmoothly(humanoidRootPart, heartPart.CFrame + Vector3.new(0, 2, 0), 0.1)
-                end
             else
                 warn("Rose part not found!")
             end
         end
-
         task.wait(0.05) -- Add a small break to prevent excessive processing in the loop
     end
 end
