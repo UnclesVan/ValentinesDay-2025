@@ -111,6 +111,7 @@ Player.Idled:Connect(onIdled)
 print("Anti AFK has been enabled.")
 
 
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
@@ -127,7 +128,7 @@ local Window = Fluent:CreateWindow({
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
     Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
+    MinimizeKey = Enum.KeyCode.LeftControl,
 })
 
 local Tabs = {
@@ -137,65 +138,16 @@ local Tabs = {
     ValentinesEvent = Window:AddTab({ Title = "Valentines Event", Icon = "" }),
 }
 
-local Options = Fluent.Options
 local shopGui -- Variable to hold the shop GUI instance
+local isTeleportingEnabled = false
 
--- Continuous monitoring and removal of specified models.
-local function monitorAndRemoveModels()
-    while true do
-        task.wait(1)  -- Check every second
-
-        -- List of models and paths to remove
-        local modelsToRemove = {
-            Workspace:FindFirstChild("ServerSidedMapSeats"),
-            Workspace:FindFirstChild("Interiors") and Workspace.Interiors:FindFirstChild("MainMap!Default") and Workspace.Interiors["MainMap!Default"]:FindFirstChild("Doors"),
-            Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("Trampolines"),
-            Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("SwingSets"),
-            Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("Seesaw"),
-            Workspace.StaticMap:FindFirstChild("Park") and Workspace.StaticMap.Park:FindFirstChild("Roundabout"),
-        }
-
-        for _, model in ipairs(modelsToRemove) do
-            if model then
-                if model:IsA("Model") or model:IsA("Folder") then
-                    -- If it's the "Doors" folder, remove all its children models.
-                    if model.Name == "Doors" then
-                        for _, door in ipairs(model:GetChildren()) do
-                            if door:IsA("Model") then
-                                door:Destroy()
-                                print("Removed door model:", door:GetFullName())
-                            end
-                        end
-                        print("Removed all models from folder:", model:GetFullName())
-                    else
-                        local success, err = pcall(function()
-                            model:Destroy()
-                        end)
-                        if success then
-                            print("Removed model:", model:GetFullName())
-                        else
-                            warn("Failed to remove model: " .. model:GetFullName() .. " - Reason: " .. err)
-                        end
-                    end
-                end
-            else
-                print("Model not found or missing in the specified path.")
-            end
-        end
-    end
-end
-
--- Start the monitoring function in a new coroutine.
-coroutine.wrap(monitorAndRemoveModels)()
-
--- Create Shop GUI function
 local function createShopGui()
     local player = Players.LocalPlayer
 
     -- Create the ScreenGui
     shopGui = Instance.new("ScreenGui")
     shopGui.Name = "ShopScreenGui"
-    shopGui.Parent = player:WaitForChild("PlayerGui") -- Ensure it's parented properly
+    shopGui.Parent = player:WaitForChild("PlayerGui") 
 
     -- Create the Main Frame
     local frame = Instance.new("Frame")
@@ -216,22 +168,22 @@ local function createShopGui()
     closeButton.Text = "Close"
     closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeButton.BackgroundColor3 = Color3.fromRGB(150, 0, 10)
-    closeButton.BackgroundTransparency = 0.2
+    closeButton.BackgroundTransparency = 0.2 
     closeButton.Font = Enum.Font.SourceSansBold
     closeButton.TextSize = 14
     closeButton.Parent = frame
 
-    -- Connect the Close Button to hide the GUI
+    -- Connect the Close Button to destroy the GUI
     closeButton.MouseButton1Click:Connect(function()
-        shopGui.Enabled = false -- Hide the GUI instead of destroying it
+        shopGui:Destroy() 
     end)
 
-    -- Set up items (same as your existing shop setup)
-    local shopCategories = {  
+    -- Set up items
+    local shopCategories = {
         ["Pets"] = {
             {name = "lvalentines_2025_love_bird", maxAmount = 10, stock = 15},
             {name = "royal_egg", maxAmount = 10, stock = 15},
-            {name = "cracked_egg", maxAmount = 10, stock = 15}, 
+            {name = "cracked_egg", maxAmount = 10, stock = 15},
             {name = "lunar_2025_gilded_snake", maxAmount = 10, stock = 0},
             {name = "lunar_2025_prism_snake", maxAmount = 10, stock = 0},
             {name = "garden_2024_egg", maxAmount = 10, stock = 0},
@@ -304,14 +256,14 @@ local function createShopGui()
             -- Create a Frame for availability sign
             local availableFrame = Instance.new("Frame")
             availableFrame.Size = UDim2.new(0.2, 0, 1, 0)
-            availableFrame.Position = UDim2.new(0.80, 0, 0, 0) -- Right aligned
+            availableFrame.Position = UDim2.new(0.80, 0, 0, 0) 
             availableFrame.BackgroundTransparency = 1
             availableFrame.Parent = itemFrame
 
             -- Create a TextLabel for availability text
             local availableSign = Instance.new("TextLabel")
             availableSign.Size = UDim2.new(1, 0, 1, 0)
-            availableSign.TextColor3 = Color3.fromRGB(255, 0, 0) -- Red color for out of stock
+            availableSign.TextColor3 = Color3.fromRGB(255, 0, 0) 
             availableSign.Font = Enum.Font.SourceSansBold
             availableSign.TextSize = 18
             availableSign.BackgroundTransparency = 1
@@ -358,22 +310,23 @@ local function createShopGui()
                         [2] = item.name,
                         [3] = { ["buy_count"] = buyCount }
                     }
+
                     -- Attempt the purchase
                     local success, errorMessage = pcall(function()
-                        print("Attempting to buy " .. buyCount .. " of " .. item.name) -- Debug message
+                        print("Attempting to buy " .. buyCount .. " of " .. item.name) 
                         game:GetService("ReplicatedStorage").API:FindFirstChild("ShopAPI/BuyItem"):InvokeServer(unpack(args))
                     end)
 
                     if success then
                         item.stock = item.stock - buyCount
-                        availableSign.Text = item.stock <= 0 and "OUT OF STOCK" or "AVAILABLE" -- Update availability
-                        textbox.Text = "" -- Clear the textbox after a successful purchase
-                        print("Purchased " .. buyCount .. " of " .. item.name) -- Success message
+                        availableSign.Text = item.stock <= 0 and "OUT OF STOCK" or "AVAILABLE"
+                        textbox.Text = ""
+                        print("Purchased " .. buyCount .. " of " .. item.name)
                     else
-                        print("Failed to buy item: " .. (errorMessage or "Unknown Error")) -- Error handling
+                        print("Failed to buy item: " .. (errorMessage or "Unknown Error"))
                     end
                 else
-                    print("Invalid amount! Please enter a valid number.") -- Debug message
+                    print("Invalid amount! Please enter a valid number.")
                 end
             end)
 
@@ -381,8 +334,8 @@ local function createShopGui()
         end
 
         tab.MouseButton1Click:Connect(function()
-            for _, tab in pairs(tabs) do
-                tab.Frame.Visible = false
+            for _, t in pairs(tabs) do
+                t.Frame.Visible = false
             end
             tabFrame.Visible = true
         end)
@@ -392,35 +345,48 @@ local function createShopGui()
     end
 end
 
-local isTeleportingEnabled = false
-local teleportFrequency = 0.5
-local allRoseParts = {}
-local allHeartColliders = {}
+local function isPositionValid(position)
+    local rayOrigin = position + Vector3.new(0, 10, 0)
+    local rayDirection = Vector3.new(0, -15, 0)
 
-local function getAllPartsRecursive(parent, partsTable)
-    for _, child in ipairs(parent:GetChildren()) do
-        if child:IsA("BasePart") then
-            table.insert(partsTable, child)
-        elseif child:IsA("Model") or child:IsA("Folder") then
-            getAllPartsRecursive(child, partsTable)
+    local raycastResult = Workspace:Raycast(rayOrigin, rayDirection)
+    return raycastResult and raycastResult.Position.Y > 0
+end
+
+local function teleportToCollider(collider, humanoidRootPart)
+    if humanoidRootPart then
+        local colliderCFrame = collider.CFrame
+        if isPositionValid(colliderCFrame.Position) then
+            humanoidRootPart.CFrame = colliderCFrame
+            print("Teleported to Collider at:", collider.Position)
+        else
+            print("Teleport position is invalid for Collider at:", collider.Position)
         end
     end
 end
 
-local function teleportToColliders(humanoidRootPart)
-    -- Teleport to each Collider in Roses
-    for _, v in pairs(Workspace.StaticMap.Valentines2025.Roses:GetDescendants()) do
-        if v.Name == "Collider" and humanoidRootPart then
-            humanoidRootPart.CFrame = v.CFrame
-            print("Teleported to Rose Collider at:", v.Position)
+local function teleportToAllPartsInPath(humanoidRootPart, pathLocation)
+    local teleportWaitTime = 0.5
+
+    for _, model in pairs(Workspace.StaticMap.Valentines2025[pathLocation]:GetChildren()) do
+        if model:IsA("Model") then
+            for _, part in pairs(model:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    teleportToCollider(part, humanoidRootPart)
+                    task.wait(teleportWaitTime)
+                end
+            end
         end
     end
+end
 
-    -- Teleport to each Collider in Hearts
-    for _, v in pairs(Workspace.StaticMap.Valentines2025.Hearts:GetDescendants()) do
-        if v.Name == "Collider" and humanoidRootPart then
-            humanoidRootPart.CFrame = v.CFrame
-            print("Teleported to Heart Collider at:", v.Position)
+local function teleportToColliders(humanoidRootPart, location)
+    local targetLocation = Workspace.StaticMap.Valentines2025[location]
+
+    for _, v in pairs(targetLocation:GetDescendants()) do
+        if v.Name == "Collider" then
+            teleportToCollider(v, humanoidRootPart)
+            task.wait(0.5)
         end
     end
 end
@@ -429,196 +395,179 @@ local function startTeleporting()
     local player = Players.LocalPlayer
     local humanoidRootPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 
-    local valentinesFolder = Workspace:FindFirstChild("StaticMap") and Workspace.StaticMap:FindFirstChild("Valentines2025")
-    if not valentinesFolder then
-        warn("Valentines2025 folder not found. Script will not run.")
+    if not humanoidRootPart then
+        warn("HumanoidRootPart not found. Teleportation will not proceed.")
         return
     end
 
-    -- Main teleportation loop.
     while isTeleportingEnabled do
-        teleportToColliders(humanoidRootPart) -- Call the function to teleport instantly to colliders
-        task.wait(0.05) -- Small break to prevent excessive processing in the loop
+        teleportToColliders(humanoidRootPart, "Roses")
+        teleportToColliders(humanoidRootPart, "Hearts")
+        teleportToColliders(humanoidRootPart, "Hearts")
+        teleportToAllPartsInPath(humanoidRootPart, "Rose_Paths")
+        teleportToColliders(humanoidRootPart, "Hearts")
+        teleportToColliders(humanoidRootPart, "Hearts")
+        teleportToColliders(humanoidRootPart, "Hearts")
+        task.wait(0.5)
     end
+
+    print("Teleportation process has stopped.")
 end
 
--- Toggle for teleportation.
 local teleportToggle = Tabs.ValentinesEvent:AddToggle("EnableTeleportation", {
     Title = "Enable Teleportation",
-    Default = false
+    Default = false,
 })
 
 teleportToggle:OnChanged(function()
-    isTeleportingEnabled = teleportToggle.Value -- Update the teleport enabled state
+    isTeleportingEnabled = teleportToggle.Value
     if isTeleportingEnabled then
-        startTeleporting() -- Start teleporting if the toggle is enabled
         print("Teleportation enabled.")
+        startTeleporting()
     else
         print("Teleportation disabled. Stopping the process.")
+        isTeleportingEnabled = false
     end
 end)
 
--- Slider for speed control.
-local speedControl = Tabs.ValentinesEvent:AddSlider("TeleportSpeedSlider", {
-    Title = "Teleport Frequency",
-    Description = "Adjust the speed of teleportation (lower values = faster)",
-    Default = 0.5,
-    Min = 0.1,
-    Max = 5,
-    Rounding = 0.1,
-    Callback = function(value)
-        teleportFrequency = value
-        print("Teleport Frequency set to:", teleportFrequency)
-    end
-})
-
--- Shop toggle implementation.
 local Toggle = Tabs.Shop:AddToggle("ShopToggle", { Title = "Enable Shop", Default = false })
-
--- Button for "Dehash Remotes".
-Tabs.Shop:AddButton({
-    Title = "Dehash Remotes",
-    Description = "Must Do when using shop",
-    Callback = function()
-        print("Dehash Remotes button clicked!")
-
-local Fsys = require(game.ReplicatedStorage:WaitForChild("Fsys")).load
-
--- Get the init function from RouterClient
-local initFunction = Fsys("RouterClient").init
-
--- Folder containing the remotes to track
-local remoteFolder = game.ReplicatedStorage:WaitForChild("API")
-
--- A flag to ensure we print only once during the initial scan
-local printedOnce = false
-
--- Function to inspect upvalues and identify remotes
-local function inspectUpvalues()
-    local remotes = {}  -- Table to collect remotes
-
-    for i = 1, math.huge do
-        local success, upvalue = pcall(getupvalue, initFunction, i)
-        if not success then
-            break
+Toggle:OnChanged(function()
+    if Toggle.Value then
+        if not shopGui then
+            createShopGui()
         end
-        
-        -- If the upvalue is a table, let's check its contents
-        if typeof(upvalue) == "table" then
-            for k, v in pairs(upvalue) do
-                -- Check for RemoteEvents, RemoteFunctions, BindableEvents, and BindableFunctions
-                if typeof(v) == "Instance" then
-                    if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") or v:IsA("BindableEvent") or v:IsA("BindableFunction") then
-                        -- Log the key, type of value, and value
-                        table.insert(remotes, {key = k, remote = v})
-                        -- If it's the first time scanning, print remote information
-                        if not printedOnce then
-                            print("Key: " .. k .. " Type: " .. typeof(k) .. ", Value Type: " .. typeof(v))
-                            print("Found remote: " .. v:GetFullName())
+        shopGui.Enabled = true
+    else
+        if shopGui then
+            shopGui.Enabled = false
+        end
+    end
+end)
+
+-- Add the Dehash Button
+Tabs.Settings:AddButton({
+    Title = "Dehash Remotes",
+    Callback = function()
+        local Fsys = require(game.ReplicatedStorage:WaitForChild("Fsys")).load
+
+        -- Get the init function from RouterClient
+        local initFunction = Fsys("RouterClient").init
+
+        -- Folder containing the remotes to track
+        local remoteFolder = game.ReplicatedStorage:WaitForChild("API")
+
+        -- A flag to ensure we print only once during the initial scan
+        local printedOnce = false
+
+        -- Function to inspect upvalues and identify remotes
+        local function inspectUpvalues()
+            local remotes = {}  -- Table to collect remotes
+
+            for i = 1, math.huge do
+                local success, upvalue = pcall(getupvalue, initFunction, i)
+                if not success then
+                    break
+                end
+                
+                -- If the upvalue is a table, let's check its contents
+                if typeof(upvalue) == "table" then
+                    for k, v in pairs(upvalue) do
+                        -- Check for RemoteEvents, RemoteFunctions, BindableEvents, and BindableFunctions
+                        if typeof(v) == "Instance" then
+                            if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") or v:IsA("BindableEvent") or v:IsA("BindableFunction") then
+                                -- Log the key, type of value, and value
+                                table.insert(remotes, {key = k, remote = v})
+                                -- If it's the first time scanning, print remote information
+                                if not printedOnce then
+                                    print("Key: " .. k .. " Type: " .. typeof(k) .. ", Value Type: " .. typeof(v))
+                                    print("Found remote: " .. v:GetFullName())
+                                end
+                            end
                         end
                     end
                 end
             end
+
+            return remotes
         end
-    end
 
-    return remotes
-end
+        -- Function to rename remotes based on their key
+        local function rename(remote, key)
+            local nameParts = string.split(key, "/")  -- Split the key by "/"
+            if #nameParts > 1 then
+                local remotename = table.concat(nameParts, "/", 1, 2)  -- Join the first two parts
+                remote.Name = remotename
+            else
+                warn("Invalid key format for remote: " .. key)  -- Notify if the key format is incorrect
+            end
+        end
 
--- Function to rename remotes based on their key
-local function rename(remote, key)
-    local nameParts = string.split(key, "/")  -- Split the key by "/"
-    if #nameParts > 1 then
-        local remotename = table.concat(nameParts, "/", 1, 2)  -- Join the first two parts
-        remote.Name = remotename
-    else
-        warn("Invalid key format for remote: " .. key)  -- Notify if the key format is incorrect
-    end
-end
-
--- Function to rename all existing remotes in the folder
-local function renameExistingRemotes()
-    local remotes = inspectUpvalues()
-
-    -- Rename all collected remotes based on the key
-    for _, entry in ipairs(remotes) do
-        rename(entry.remote, entry.key)
-    end
-end
-
--- Function to display dehashed message
-local function displayDehashedMessage()
-    local uiElement = game:GetService("Players").LocalPlayer.PlayerGui.HintApp.LargeTextLabel
-    uiElement.Text = "Remotes has been Dehashed!"
-    uiElement.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
-    wait(3)
-    uiElement.Text = ""
-    uiElement.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
-end
-
--- Monitor for new remotes added to the folder
-local function monitorForNewRemotes()
-    remoteFolder.ChildAdded:Connect(function(child)
-        if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") or child:IsA("BindableEvent") or child:IsA("BindableFunction") then
-            print("New remote added: " .. child:GetFullName())
-            -- Check and rename the new remote
+        -- Function to rename all existing remotes in the folder
+        local function renameExistingRemotes()
             local remotes = inspectUpvalues()
+
+            -- Rename all collected remotes based on the key
             for _, entry in ipairs(remotes) do
                 rename(entry.remote, entry.key)
             end
         end
-    end)
-end
 
--- Coroutine for periodic check without freezing
-local function periodicCheck()
-    while true do
-        task.wait(10)  -- Check every 10 seconds (can adjust based on your needs)
-        -- Scan and rename existing remotes periodically
-        pcall(renameExistingRemotes)
-    end
-end
+        -- Function to display dehashed message
+        local function displayDehashedMessage()
+            local uiElement = Players.LocalPlayer.PlayerGui.HintApp.LargeTextLabel
+            uiElement.Text = "Remotes have been Dehashed!"
+            uiElement.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
+            wait(3)
+            uiElement.Text = ""
+            uiElement.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
+        end
 
--- Start the periodic check in a coroutine (non-blocking)
-coroutine.wrap(periodicCheck)()
+        -- Monitor for new remotes added to the folder
+        local function monitorForNewRemotes()
+            remoteFolder.ChildAdded:Connect(function(child)
+                if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") or child:IsA("BindableEvent") or child:IsA("BindableFunction") then
+                    print("New remote added: " .. child:GetFullName())
+                    -- Check and rename the new remote
+                    local remotes = inspectUpvalues()
+                    for _, entry in ipairs(remotes) do
+                        rename(entry.remote, entry.key)
+                    end
+                end
+            end)
+        end
 
--- Initial scan and rename for all existing remotes (print once)
-renameExistingRemotes()
+        -- Coroutine for periodic check without freezing
+        local function periodicCheck()
+            while true do
+                task.wait(10)  -- Check every 10 seconds (can adjust based on your needs)
+                -- Scan and rename existing remotes periodically
+                pcall(renameExistingRemotes)
+            end
+        end
 
--- Display dehashed message
-displayDehashedMessage()
+        -- Start the periodic check in a coroutine (non-blocking)
+        coroutine.wrap(periodicCheck)()
 
--- Set the flag to prevent printing more than once
-printedOnce = true
+        -- Initial scan and rename for all existing remotes (print once)
+        renameExistingRemotes()
 
-print("Script initialized and monitoring remotes.")
+        -- Display dehashed message
+        displayDehashedMessage()
 
+        -- Set the flag to prevent printing more than once
+        printedOnce = true
 
-        dehashRemotes()  -- Call the dehash function
+        print("Script initialized and monitoring remotes.")
     end
 })
-
-Toggle:OnChanged(function()
-    if Toggle.Value then
-        if not shopGui then
-            createShopGui() -- Create shop GUI if it doesn't exist
-        end
-        shopGui.Enabled = true -- Show the GUI when the toggle is enabled
-    else
-        if shopGui then
-            shopGui.Enabled = false -- Hide the GUI
-        end
-    end
-end)
 
 Window:SelectTab(1)
 
 Fluent:Notify({
     Title = "Fluent",
     Content = "The script has been loaded.",
-    Duration = 8
+    Duration = 8,
 })
 
 -- Load configuration.
 SaveManager:LoadAutoloadConfig()
-
