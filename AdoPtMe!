@@ -111,7 +111,6 @@ Player.Idled:Connect(onIdled)
 print("Anti AFK has been enabled.")
 
 
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
@@ -147,7 +146,7 @@ local function createShopGui()
     -- Create the ScreenGui
     shopGui = Instance.new("ScreenGui")
     shopGui.Name = "ShopScreenGui"
-    shopGui.Parent = player:WaitForChild("PlayerGui") 
+    shopGui.Parent = player:WaitForChild("PlayerGui")
 
     -- Create the Main Frame
     local frame = Instance.new("Frame")
@@ -168,14 +167,14 @@ local function createShopGui()
     closeButton.Text = "Close"
     closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeButton.BackgroundColor3 = Color3.fromRGB(150, 0, 10)
-    closeButton.BackgroundTransparency = 0.2 
+    closeButton.BackgroundTransparency = 0.2
     closeButton.Font = Enum.Font.SourceSansBold
     closeButton.TextSize = 14
     closeButton.Parent = frame
 
     -- Connect the Close Button to destroy the GUI
     closeButton.MouseButton1Click:Connect(function()
-        shopGui:Destroy() 
+        shopGui:Destroy()
     end)
 
     -- Set up items
@@ -256,14 +255,14 @@ local function createShopGui()
             -- Create a Frame for availability sign
             local availableFrame = Instance.new("Frame")
             availableFrame.Size = UDim2.new(0.2, 0, 1, 0)
-            availableFrame.Position = UDim2.new(0.80, 0, 0, 0) 
+            availableFrame.Position = UDim2.new(0.80, 0, 0, 0)
             availableFrame.BackgroundTransparency = 1
             availableFrame.Parent = itemFrame
 
             -- Create a TextLabel for availability text
             local availableSign = Instance.new("TextLabel")
             availableSign.Size = UDim2.new(1, 0, 1, 0)
-            availableSign.TextColor3 = Color3.fromRGB(255, 0, 0) 
+            availableSign.TextColor3 = Color3.fromRGB(255, 0, 0)
             availableSign.Font = Enum.Font.SourceSansBold
             availableSign.TextSize = 18
             availableSign.BackgroundTransparency = 1
@@ -313,7 +312,7 @@ local function createShopGui()
 
                     -- Attempt the purchase
                     local success, errorMessage = pcall(function()
-                        print("Attempting to buy " .. buyCount .. " of " .. item.name) 
+                        print("Attempting to buy " .. buyCount .. " of " .. item.name)
                         game:GetService("ReplicatedStorage").API:FindFirstChild("ShopAPI/BuyItem"):InvokeServer(unpack(args))
                     end)
 
@@ -401,12 +400,10 @@ local function startTeleporting()
     end
 
     while isTeleportingEnabled do
+        teleportToColliders(humanoidRootPart, "Hearts")
         teleportToColliders(humanoidRootPart, "Roses")
         teleportToColliders(humanoidRootPart, "Hearts")
-        teleportToColliders(humanoidRootPart, "Hearts")
         teleportToAllPartsInPath(humanoidRootPart, "Rose_Paths")
-        teleportToColliders(humanoidRootPart, "Hearts")
-        teleportToColliders(humanoidRootPart, "Hearts")
         teleportToColliders(humanoidRootPart, "Hearts")
         task.wait(0.5)
     end
@@ -444,6 +441,34 @@ Toggle:OnChanged(function()
     end
 end)
 
+-- Function to continuously remove child models from the Doors folder and specific model
+local function continuallyRemoveModels()
+    while true do
+        -- Remove items from the Doors folder
+        local doorsFolder = Workspace:FindFirstChild("Interiors") and Workspace.Interiors:FindFirstChild("MainMap!Default"):FindFirstChild("Doors")
+        if doorsFolder then
+            for _, door in ipairs(doorsFolder:GetChildren()) do
+                if door:IsA("Model") or door:IsA("Part") then
+                    door:Destroy()
+                    print("Removed door: " .. door.Name)
+                end
+            end
+        end
+
+        -- Remove the ServerSidedMapSeats model
+        local serverSidedMapSeats = Workspace:FindFirstChild("ServerSidedMapSeats")
+        if serverSidedMapSeats then
+            serverSidedMapSeats:Destroy()
+            print("Removed model: ServerSidedMapSeats")
+        end
+
+        task.wait(1) -- Adjust the interval as necessary (1 second in this case)
+    end
+end
+
+-- Start the continuous removal of models
+task.spawn(continuallyRemoveModels)
+
 -- Add the Dehash Button
 Tabs.Settings:AddButton({
     Title = "Dehash Remotes",
@@ -468,7 +493,7 @@ Tabs.Settings:AddButton({
                 if not success then
                     break
                 end
-                
+
                 -- If the upvalue is a table, let's check its contents
                 if typeof(upvalue) == "table" then
                     for k, v in pairs(upvalue) do
@@ -571,3 +596,6 @@ Fluent:Notify({
 
 -- Load configuration.
 SaveManager:LoadAutoloadConfig()
+
+
+
