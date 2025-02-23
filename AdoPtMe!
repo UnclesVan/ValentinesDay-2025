@@ -532,7 +532,7 @@ local function displayDehashedMessage()
     uiElement.Text = "Remotes has been Dehashed!"
     uiElement.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
     wait(3)
-    uiElement.Text = "🌹 Will Teleport If there Is Roses Available 🌹"
+    uiElement.Text = "🌹 Will Teleport If there Is any Roses and Hearts Available and are added to the Game 🌹"
     uiElement.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
 end
 
