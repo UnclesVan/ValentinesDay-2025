@@ -130,19 +130,22 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl,
 })
 
+-- Define tabs along with the specified icon assets (Settings at the top)
 local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
-    Shop = Window:AddTab({ Title = "Adopt Me Shop In BETA", Icon = "shopping-cart" }),
-    ValentinesEvent = Window:AddTab({ Title = "Valentines Event", Icon = "" }),
+    Main = Window:AddTab({ Title = "Main", Icon = "rbxassetid://12019584411" }),
+    Shop = Window:AddTab({ Title = "Adopt Me Shop In BETA", Icon = "rbxassetid://12019584411" }),
+    ValentinesEvent = Window:AddTab({ Title = "Valentines Event", Icon = "rbxassetid://12019584411" }),
+    AdoptMeUIs = Window:AddTab({ Title = "ADOPTME UIs", Icon = "rbxassetid://12019584411" }),
 }
 
 local shopGui -- Variable to hold the shop GUI instance
 local isTeleportingEnabled = false
+local isAdoptMeUIsEnabled = false -- Variable for Adopt Me UIs toggle
 
+-- Function to create the shop GUI
 local function createShopGui()
     local player = Players.LocalPlayer
-
     -- Create the ScreenGui
     shopGui = Instance.new("ScreenGui")
     shopGui.Name = "ShopScreenGui"
@@ -177,7 +180,7 @@ local function createShopGui()
         shopGui:Destroy()
     end)
 
-    -- Set up items
+    -- Set up items for the shop
     local shopCategories = {
         ["Pets"] = {
             {name = "lvalentines_2025_love_bird", maxAmount = 10, stock = 15},
@@ -206,7 +209,7 @@ local function createShopGui()
     tabPanel.BackgroundTransparency = 0.2
     tabPanel.Parent = frame
 
-    -- Create tabs
+    -- Create tabs for shop categories
     local tabs = {}
     local tabIndex = 1
     for category, items in pairs(shopCategories) do
@@ -226,7 +229,7 @@ local function createShopGui()
         tabFrame.Position = UDim2.new(0, 0, 0.1, 0)
         tabFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
         tabFrame.BackgroundTransparency = 1
-        tabFrame.Visible = tabIndex == 1
+        tabFrame.Visible = tabIndex == 1 -- Only show the first tab initially
         tabFrame.Parent = tabPanel
 
         -- Create the items within each tab
@@ -269,11 +272,7 @@ local function createShopGui()
             availableSign.Parent = availableFrame
 
             -- Update availability based on stock
-            if item.stock <= 0 then
-                availableSign.Text = "OUT OF STOCK"
-            else
-                availableSign.Text = "AVAILABLE"
-            end
+            availableSign.Text = item.stock <= 0 and "OUT OF STOCK" or "AVAILABLE"
 
             -- Create UI elements within the item frame
             local textbox = Instance.new("TextBox")
@@ -367,7 +366,7 @@ end
 local function teleportToAllPartsInPath(humanoidRootPart, pathLocation)
     local teleportWaitTime = 0.5
 
-    for _, model in pairs(Workspace.StaticMap.Valentines2025[pathLocation]:GetChildren()) do
+    for _, model in pairs(Workspace.StaticMap.Valentines2025:FindFirstChild(pathLocation):GetChildren()) do
         if model:IsA("Model") then
             for _, part in pairs(model:GetDescendants()) do
                 if part:IsA("BasePart") then
@@ -380,13 +379,17 @@ local function teleportToAllPartsInPath(humanoidRootPart, pathLocation)
 end
 
 local function teleportToColliders(humanoidRootPart, location)
-    local targetLocation = Workspace.StaticMap.Valentines2025[location]
+    local targetLocation = Workspace.StaticMap.Valentines2025:FindFirstChild(location)
 
-    for _, v in pairs(targetLocation:GetDescendants()) do
-        if v.Name == "Collider" then
-            teleportToCollider(v, humanoidRootPart)
-            task.wait(0.5)
+    if targetLocation then
+        for _, v in pairs(targetLocation:GetDescendants()) do
+            if v.Name == "Collider" then
+                teleportToCollider(v, humanoidRootPart)
+                task.wait(0.5)
+            end
         end
+    else
+        warn("Target location not found: " .. location)
     end
 end
 
@@ -411,6 +414,7 @@ local function startTeleporting()
     print("Teleportation process has stopped.")
 end
 
+-- Teleportation toggle
 local teleportToggle = Tabs.ValentinesEvent:AddToggle("EnableTeleportation", {
     Title = "Enable Teleportation",
     Default = false,
@@ -427,6 +431,7 @@ teleportToggle:OnChanged(function()
     end
 end)
 
+-- Toggle for Shop
 local Toggle = Tabs.Shop:AddToggle("ShopToggle", { Title = "Enable Shop", Default = false })
 Toggle:OnChanged(function()
     if Toggle.Value then
@@ -441,21 +446,201 @@ Toggle:OnChanged(function()
     end
 end)
 
+-- Functionality related to ADOPTME UIs
+local function createCandyUI()
+    local player = Players.LocalPlayer
+    local playerGui = player:WaitForChild("PlayerGui")
+
+    local originalAmountLabel = playerGui:WaitForChild("AltCurrencyIndicatorApp"):WaitForChild("CurrencyIndicator"):WaitForChild("Container"):WaitForChild("Amount")
+    
+    local candyUI = Instance.new("ScreenGui")
+    candyUI.Name = "CandyUI"
+    candyUI.Parent = playerGui
+
+    local candyHeader = Instance.new("TextLabel")
+    candyHeader.Size = UDim2.new(1, 0, 0.1, 0) 
+    candyHeader.Position = UDim2.new(0, 0, 0.4, 0)
+    candyHeader.BackgroundTransparency = 1
+    candyHeader.TextColor3 = Color3.new(0, 0, 0)
+    candyHeader.Font = Enum.Font.SourceSansBold
+    candyHeader.TextScaled = true
+    candyHeader.Text = "------- CANDY -------"
+    candyHeader.Parent = candyUI
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0.3, 0, 0.25 * 0.9, 0)
+    frame.Position = UDim2.new(0.5, -0.15, 0.5, 0) 
+    frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    frame.BackgroundTransparency = 0.2
+    frame.BorderSizePixel = 0
+    frame.Parent = candyUI
+
+    local amountDisplay = Instance.new("TextLabel", frame)
+    amountDisplay.Size = UDim2.new(1, 0, 1, 0)
+    amountDisplay.Position = UDim2.new(0, 0, 0, 0)
+    amountDisplay.BackgroundTransparency = 1
+    amountDisplay.TextColor3 = Color3.new(0, 0, 0)
+    amountDisplay.TextScaled = true
+    amountDisplay.TextSize = 36
+    amountDisplay.Text = originalAmountLabel.Text
+
+    local function updateCandyAmount()
+        amountDisplay.Text = originalAmountLabel.Text
+    end
+    
+    originalAmountLabel.Changed:Connect(updateCandyAmount)
+    updateCandyAmount()
+
+    local closeButton = Instance.new("TextButton", frame)
+    closeButton.Size = UDim2.new(0.1, 0, 0.5, 0)
+    closeButton.Position = UDim2.new(0.9, 0, 0.25, 0)
+    closeButton.BackgroundColor3 = Color3.fromRGB(255, 58, 58)
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextSize = 36
+    closeButton.Text = "X"
+
+    closeButton.MouseButton1Click:Connect(function()
+        candyUI:Destroy()
+    end)
+end
+
+local function createBucksUI()
+    local player = Players.LocalPlayer
+    local playerGui = player:WaitForChild("PlayerGui")
+
+    -- Path to the original bucks amount label
+    local originalBucksLabel = playerGui:WaitForChild("BucksIndicatorApp"):WaitForChild("CurrencyIndicator"):WaitForChild("Container"):WaitForChild("Amount")
+
+    local bucksUI = Instance.new("ScreenGui")
+    bucksUI.Name = "BucksUI"
+    bucksUI.Parent = playerGui
+
+    local bucksHeader = Instance.new("TextLabel")
+    bucksHeader.Size = UDim2.new(1, 0, 0.1, 0) 
+    bucksHeader.Position = UDim2.new(0, 0, 0, 0) 
+    bucksHeader.BackgroundTransparency = 1
+    bucksHeader.TextColor3 = Color3.new(0, 0, 0)
+    bucksHeader.Font = Enum.Font.SourceSansBold
+    bucksHeader.TextScaled = true
+    bucksHeader.Text = "------- BUCKS -------"
+    bucksHeader.Parent = bucksUI
+
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0.3, 0, 0.25 * 0.9, 0) 
+    frame.Position = UDim2.new(0.5, -0.15, 0.1, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    frame.BackgroundTransparency = 0.2
+    frame.BorderSizePixel = 0
+    frame.Parent = bucksUI
+
+    local amountDisplay = Instance.new("TextLabel", frame)
+    amountDisplay.Size = UDim2.new(1, 0, 1, 0)
+    amountDisplay.Position = UDim2.new(0, 0, 0, 0)
+    amountDisplay.BackgroundTransparency = 1
+    amountDisplay.TextColor3 = Color3.new(0, 0, 0)
+    amountDisplay.TextScaled = true  -- Using TextScaled for dynamic sizing
+    amountDisplay.TextSize = 36
+    amountDisplay.Text = originalBucksLabel.Text
+
+    -- Function to update the displayed amount
+    local function updateBucksAmount()
+        amountDisplay.Text = originalBucksLabel.Text  -- Updates the displayed amount
+    end
+
+    -- Connect the update function to property changes
+    originalBucksLabel:GetPropertyChangedSignal("Text"):Connect(updateBucksAmount)
+    updateBucksAmount()  -- Initial update to show the correct value immediately
+
+    -- Close button to destroy the Bucks UI
+    local closeButton = Instance.new("TextButton", frame)
+    closeButton.Size = UDim2.new(0.1, 0, 0.5, 0)
+    closeButton.Position = UDim2.new(0.9, 0, 0.25, 0)
+    closeButton.BackgroundColor3 = Color3.fromRGB(255, 58, 58)
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.TextSize = 36
+    closeButton.Text = "X"
+
+    closeButton.MouseButton1Click:Connect(function()
+        bucksUI:Destroy()  -- Destroy the Bucks UI when X button is clicked
+    end)
+end
+
+-- Toggle for CANDY UI
+local candyToggle = Tabs.AdoptMeUIs:AddToggle("Enable CANDY UI", {
+    Title = "Enable CANDY UI",
+    Default = false,
+})
+
+candyToggle:OnChanged(function()
+    if candyToggle.Value then
+        createCandyUI()
+    else
+        local candyUIInstance = Players.LocalPlayer.PlayerGui:FindFirstChild("CandyUI")
+        if candyUIInstance then
+            candyUIInstance:Destroy()
+        end
+    end
+end)
+
+-- Toggle for BUCKS UI
+local bucksToggle = Tabs.AdoptMeUIs:AddToggle("Enable BUCKS UI", {
+    Title = "Enable BUCKS UI",
+    Default = false,
+})
+
+bucksToggle:OnChanged(function()
+    if bucksToggle.Value then
+        createBucksUI()
+    else
+        local bucksUIInstance = Players.LocalPlayer.PlayerGui:FindFirstChild("BucksUI")
+        if bucksUIInstance then
+            bucksUIInstance:Destroy()
+        end
+    end
+end)
+
+-- Logic for ADOPTME UIs Tab
+local adoptMeToggle = Tabs.AdoptMeUIs:AddToggle("Enable Adopt Me UIs", {
+    Title = "Enable Adopt Me UIs",
+    Default = false,
+})
+
+adoptMeToggle:OnChanged(function()
+    isAdoptMeUIsEnabled = adoptMeToggle.Value
+    if isAdoptMeUIsEnabled then
+        print("Adopt Me UIs enabled.")
+    else
+        print("Adopt Me UIs disabled.")
+    end
+end)
+
 -- Function to continuously remove child models from the Doors folder and specific model
 local function continuallyRemoveModels()
     while true do
-        -- Remove items from the Doors folder
-        local doorsFolder = Workspace:FindFirstChild("Interiors") and Workspace.Interiors:FindFirstChild("MainMap!Default"):FindFirstChild("Doors")
-        if doorsFolder then
-            for _, door in ipairs(doorsFolder:GetChildren()) do
-                if door:IsA("Model") or door:IsA("Part") then
-                    door:Destroy()
-                    print("Removed door: " .. door.Name)
+        -- Safely check for the doors folder
+        local interiors = Workspace:FindFirstChild("Interiors")
+        if interiors then
+            local mainMap = interiors:FindFirstChild("MainMap!Default")
+            if mainMap then
+                local doorsFolder = mainMap:FindFirstChild("Doors")
+                if doorsFolder then
+                    for _, door in ipairs(doorsFolder:GetChildren()) do
+                        if door:IsA("Model") or door:IsA("Part") then
+                            door:Destroy()
+                            print("Removed door: " .. door.Name)
+                        end
+                    end
+                else
+                    print("Doors folder not found.")
                 end
+            else
+                print("MainMap!Default not found.")
             end
+        else
+            print("Interiors not found.")
         end
 
-        -- Remove the ServerSidedMapSeats model
+        -- Safely check and remove the ServerSidedMapSeats model
         local serverSidedMapSeats = Workspace:FindFirstChild("ServerSidedMapSeats")
         if serverSidedMapSeats then
             serverSidedMapSeats:Destroy()
