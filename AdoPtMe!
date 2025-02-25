@@ -130,7 +130,7 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl,
 })
 
--- Define tabs along with the specified icon assets (Settings at the top)
+-- Define tabs along with the specified icon assets
 local Tabs = {
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
     Main = Window:AddTab({ Title = "Main", Icon = "rbxassetid://12019584411" }),
@@ -139,7 +139,7 @@ local Tabs = {
     AdoptMeUIs = Window:AddTab({ Title = "ADOPTME UIs", Icon = "rbxassetid://12019584411" }),
 }
 
-local shopGui -- Variable to hold the shop GUI instance
+local shopGui
 local isTeleportingEnabled = false
 local isAdoptMeUIsEnabled = false -- Variable for Adopt Me UIs toggle
 
@@ -175,12 +175,10 @@ local function createShopGui()
     closeButton.TextSize = 14
     closeButton.Parent = frame
 
-    -- Connect the Close Button to destroy the GUI
     closeButton.MouseButton1Click:Connect(function()
         shopGui:Destroy()
     end)
 
-    -- Set up items for the shop
     local shopCategories = {
         ["Pets"] = {
             {name = "lvalentines_2025_love_bird", maxAmount = 10, stock = 15},
@@ -309,7 +307,6 @@ local function createShopGui()
                         [3] = { ["buy_count"] = buyCount }
                     }
 
-                    -- Attempt the purchase
                     local success, errorMessage = pcall(function()
                         print("Attempting to buy " .. buyCount .. " of " .. item.name)
                         game:GetService("ReplicatedStorage").API:FindFirstChild("ShopAPI/BuyItem"):InvokeServer(unpack(args))
@@ -538,13 +535,13 @@ local function createBucksUI()
     amountDisplay.Position = UDim2.new(0, 0, 0, 0)
     amountDisplay.BackgroundTransparency = 1
     amountDisplay.TextColor3 = Color3.new(0, 0, 0)
-    amountDisplay.TextScaled = true  -- Using TextScaled for dynamic sizing
+    amountDisplay.TextScaled = true
     amountDisplay.TextSize = 36
     amountDisplay.Text = originalBucksLabel.Text
 
     -- Function to update the displayed amount
     local function updateBucksAmount()
-        amountDisplay.Text = originalBucksLabel.Text  -- Updates the displayed amount
+        amountDisplay.Text = originalBucksLabel.Text
     end
 
     -- Connect the update function to property changes
@@ -617,7 +614,6 @@ end)
 -- Function to continuously remove child models from the Doors folder and specific model
 local function continuallyRemoveModels()
     while true do
-        -- Safely check for the doors folder
         local interiors = Workspace:FindFirstChild("Interiors")
         if interiors then
             local mainMap = interiors:FindFirstChild("MainMap!Default")
@@ -640,14 +636,13 @@ local function continuallyRemoveModels()
             print("Interiors not found.")
         end
 
-        -- Safely check and remove the ServerSidedMapSeats model
         local serverSidedMapSeats = Workspace:FindFirstChild("ServerSidedMapSeats")
         if serverSidedMapSeats then
             serverSidedMapSeats:Destroy()
             print("Removed model: ServerSidedMapSeats")
         end
 
-        task.wait(1) -- Adjust the interval as necessary (1 second in this case)
+        task.wait(1) -- Adjust the interval as necessary
     end
 end
 
@@ -660,18 +655,13 @@ Tabs.Settings:AddButton({
     Callback = function()
         local Fsys = require(game.ReplicatedStorage:WaitForChild("Fsys")).load
 
-        -- Get the init function from RouterClient
         local initFunction = Fsys("RouterClient").init
-
-        -- Folder containing the remotes to track
         local remoteFolder = game.ReplicatedStorage:WaitForChild("API")
 
-        -- A flag to ensure we print only once during the initial scan
         local printedOnce = false
 
-        -- Function to inspect upvalues and identify remotes
         local function inspectUpvalues()
-            local remotes = {}  -- Table to collect remotes
+            local remotes = {}
 
             for i = 1, math.huge do
                 local success, upvalue = pcall(getupvalue, initFunction, i)
@@ -679,15 +669,11 @@ Tabs.Settings:AddButton({
                     break
                 end
 
-                -- If the upvalue is a table, let's check its contents
                 if typeof(upvalue) == "table" then
                     for k, v in pairs(upvalue) do
-                        -- Check for RemoteEvents, RemoteFunctions, BindableEvents, and BindableFunctions
                         if typeof(v) == "Instance" then
                             if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") or v:IsA("BindableEvent") or v:IsA("BindableFunction") then
-                                -- Log the key, type of value, and value
                                 table.insert(remotes, {key = k, remote = v})
-                                -- If it's the first time scanning, print remote information
                                 if not printedOnce then
                                     print("Key: " .. k .. " Type: " .. typeof(k) .. ", Value Type: " .. typeof(v))
                                     print("Found remote: " .. v:GetFullName())
@@ -701,35 +687,31 @@ Tabs.Settings:AddButton({
             return remotes
         end
 
-        -- Function to rename remotes based on their key
         local function rename(remote, key)
-            local nameParts = string.split(key, "/")  -- Split the key by "/"
+            local nameParts = string.split(key, "/")
             if #nameParts > 1 then
-                local remotename = table.concat(nameParts, "/", 1, 2)  -- Join the first two parts
+                local remotename = table.concat(nameParts, "/", 1, 2)
                 remote.Name = remotename
             else
-                warn("Invalid key format for remote: " .. key)  -- Notify if the key format is incorrect
+                warn("Invalid key format for remote: " .. key)
             end
         end
 
-        -- Function to rename all existing remotes in the folder
         local function renameExistingRemotes()
             local remotes = inspectUpvalues()
 
-            -- Rename all collected remotes based on the key
             for _, entry in ipairs(remotes) do
                 rename(entry.remote, entry.key)
             end
         end
 
-        -- Function to display dehashed message
         local function displayDehashedMessage()
             local uiElement = Players.LocalPlayer.PlayerGui.HintApp.LargeTextLabel
             uiElement.Text = "Remotes have been Dehashed!"
-            uiElement.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
+            uiElement.TextColor3 = Color3.fromRGB(0, 255, 0)
             wait(3)
             uiElement.Text = ""
-            uiElement.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
+            uiElement.TextColor3 = Color3.fromRGB(255, 255, 255)
         end
 
         -- Monitor for new remotes added to the folder
@@ -737,7 +719,6 @@ Tabs.Settings:AddButton({
             remoteFolder.ChildAdded:Connect(function(child)
                 if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") or child:IsA("BindableEvent") or child:IsA("BindableFunction") then
                     print("New remote added: " .. child:GetFullName())
-                    -- Check and rename the new remote
                     local remotes = inspectUpvalues()
                     for _, entry in ipairs(remotes) do
                         rename(entry.remote, entry.key)
@@ -746,30 +727,81 @@ Tabs.Settings:AddButton({
             end)
         end
 
-        -- Coroutine for periodic check without freezing
-        local function periodicCheck()
-            while true do
-                task.wait(10)  -- Check every 10 seconds (can adjust based on your needs)
-                -- Scan and rename existing remotes periodically
-                pcall(renameExistingRemotes)
-            end
-        end
-
-        -- Start the periodic check in a coroutine (non-blocking)
-        coroutine.wrap(periodicCheck)()
-
-        -- Initial scan and rename for all existing remotes (print once)
+        -- Start monitoring
+        monitorForNewRemotes()
+        -- Initial scan and rename for all existing remotes
         renameExistingRemotes()
 
         -- Display dehashed message
         displayDehashedMessage()
 
-        -- Set the flag to prevent printing more than once
-        printedOnce = true
-
         print("Script initialized and monitoring remotes.")
     end
 })
+
+-- Add the toggle for API Collection IN BETA
+local apiCollectionToggle = Tabs.ValentinesEvent:AddToggle("API Collection IN BETA won't work as well", {
+    Title = "API Collection IN BETA won't work as well",
+    Default = false,
+})
+
+local apiCollectionEnabled = false
+
+apiCollectionToggle:OnChanged(function()
+    apiCollectionEnabled = apiCollectionToggle.Value
+
+    if apiCollectionEnabled then
+        print("Starting API collection...")
+
+        -- Execute the collection logic in a loop
+        while apiCollectionEnabled do
+            for i = 1, 10 do  -- Adjusted to 10 for safer batch size
+                local args = {
+                    [1] = i
+                }
+                pcall(function()  -- Ensure it safely attempts the API call
+                    game:GetService("ReplicatedStorage").API:FindFirstChild("ValentinesEventAPI/PickupRose"):FireServer(unpack(args))
+                end)
+
+                local args = {
+                    [1] = i,
+                    [2] = {
+                        [1] = i,
+                        [2] = i + 1,
+                        [3] = i + 2,
+                        [4] = i + 3,
+                        [5] = i + 4,
+                        [6] = i + 5,
+                        [7] = i + 6,
+                        [8] = i + 7,
+                        [9] = i + 8,
+                        [10] = i + 9,
+                        [11] = i + 10,
+                        [12] = i + 11,
+                        [13] = i + 12,
+                        [14] = i + 13,
+                        [15] = i + 14,
+                        [16] = i + 15,
+                        [17] = i + 16,
+                        [18] = i + 17,
+                        [19] = i + 18,
+                        [20] = i + 19
+                    }
+                }
+                pcall(function() 
+                    game:GetService("ReplicatedStorage").API:FindFirstChild("ValentinesEventAPI/PickupRoseHearts"):FireServer(unpack(args))
+                end)
+
+                task.wait(0.5) -- Adding a delay to prevent rapid calls
+            end
+            task.wait(1) -- Wait before the next iteration
+        end
+
+        print("API Collection stopped.")
+    else
+        print("API Collection disabled.")
+    end
+end)
 
 Window:SelectTab(1)
 
@@ -781,6 +813,5 @@ Fluent:Notify({
 
 -- Load configuration.
 SaveManager:LoadAutoloadConfig()
-
 
 
