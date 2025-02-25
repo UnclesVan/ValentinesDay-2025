@@ -111,6 +111,7 @@ Player.Idled:Connect(onIdled)
 print("Anti AFK has been enabled.")
 
 
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
@@ -142,6 +143,7 @@ local Tabs = {
 local shopGui
 local isTeleportingEnabled = false
 local isAdoptMeUIsEnabled = false -- Variable for Adopt Me UIs toggle
+local teleportWaitTime = 0.5 -- Default teleport wait time
 
 -- Function to create the shop GUI
 local function createShopGui()
@@ -361,14 +363,12 @@ local function teleportToCollider(collider, humanoidRootPart)
 end
 
 local function teleportToAllPartsInPath(humanoidRootPart, pathLocation)
-    local teleportWaitTime = 0.5
-
     for _, model in pairs(Workspace.StaticMap.Valentines2025:FindFirstChild(pathLocation):GetChildren()) do
         if model:IsA("Model") then
             for _, part in pairs(model:GetDescendants()) do
                 if part:IsA("BasePart") then
                     teleportToCollider(part, humanoidRootPart)
-                    task.wait(teleportWaitTime)
+                    task.wait(teleportWaitTime) -- Use the teleport wait time variable
                 end
             end
         end
@@ -382,7 +382,7 @@ local function teleportToColliders(humanoidRootPart, location)
         for _, v in pairs(targetLocation:GetDescendants()) do
             if v.Name == "Collider" then
                 teleportToCollider(v, humanoidRootPart)
-                task.wait(0.5)
+                task.wait(teleportWaitTime) -- Use the teleport wait time variable
             end
         end
     else
@@ -405,11 +405,45 @@ local function startTeleporting()
         teleportToColliders(humanoidRootPart, "Hearts")
         teleportToAllPartsInPath(humanoidRootPart, "Rose_Paths")
         teleportToColliders(humanoidRootPart, "Hearts")
-        task.wait(0.5)
+        task.wait(teleportWaitTime) -- Use the teleport wait time variable
     end
 
     print("Teleportation process has stopped.")
 end
+
+-- Numeric input for teleport wait time
+local Input = Tabs.ValentinesEvent:AddInput("TeleportWaitTimeInput", {
+    Title = "Teleport Wait Time (seconds)",
+    Default = "0.5",
+    Placeholder = "Enter wait time",
+    Numeric = true, -- Allows only numbers
+    Finished = true, -- Calls the callback when you press Enter
+    Callback = function(Value)
+        teleportWaitTime = tonumber(Value) or 0.5 -- If input is invalid, fall back to 0.5
+        print("Teleport wait time set to: " .. teleportWaitTime .. " seconds.")
+    end
+})
+
+-- Slider for teleport wait time
+local Slider = Tabs.ValentinesEvent:AddSlider("TeleportWaitTimeSlider", {
+    Title = "Teleport Wait Time",
+    Description = "Adjust the teleport wait time",
+    Default = teleportWaitTime, -- Start with the default value
+    Min = 0,
+    Max = 5,
+    Rounding = 0.1,
+    Callback = function(Value)
+        teleportWaitTime = Value -- Update the teleport wait time with the slider value
+        Input:SetValue(tostring(teleportWaitTime)) -- Update the input value to match the slider
+        print("Slider adjusted teleport wait time to: " .. teleportWaitTime .. " seconds.")
+    end
+})
+
+Slider:OnChanged(function(Value)
+    teleportWaitTime = Value -- Update the variable with the slider value
+    Input:SetValue(tostring(teleportWaitTime)) -- Update the input value to match the slider
+    print("Slider changed teleport wait time to: " .. teleportWaitTime .. " seconds.")
+end)
 
 -- Teleportation toggle
 local teleportToggle = Tabs.ValentinesEvent:AddToggle("EnableTeleportation", {
@@ -611,42 +645,59 @@ adoptMeToggle:OnChanged(function()
     end
 end)
 
--- Function to continuously remove child models from the Doors folder and specific model
+-- Function to continuously remove specified models
 local function continuallyRemoveModels()
     while true do
-        local interiors = Workspace:FindFirstChild("Interiors")
-        if interiors then
-            local mainMap = interiors:FindFirstChild("MainMap!Default")
-            if mainMap then
-                local doorsFolder = mainMap:FindFirstChild("Doors")
-                if doorsFolder then
-                    for _, door in ipairs(doorsFolder:GetChildren()) do
-                        if door:IsA("Model") or door:IsA("Part") then
-                            door:Destroy()
-                            print("Removed door: " .. door.Name)
-                        end
-                    end
-                else
-                    print("Doors folder not found.")
-                end
-            else
-                print("MainMap!Default not found.")
-            end
-        else
-            print("Interiors not found.")
-        end
-
+        -- Remove ServerSidedMapSeats model
         local serverSidedMapSeats = Workspace:FindFirstChild("ServerSidedMapSeats")
         if serverSidedMapSeats then
             serverSidedMapSeats:Destroy()
             print("Removed model: ServerSidedMapSeats")
         end
 
-        task.wait(1) -- Adjust the interval as necessary
+        -- Remove Trampolines model
+        local trampolines = Workspace:FindFirstChild("StaticMap")
+        if trampolines and trampolines:FindFirstChild("Park") and trampolines.Park:FindFirstChild("Trampolines") then
+            trampolines.Park.Trampolines:Destroy()
+            print("Removed model: Trampolines")
+        end
+
+        -- Remove SwingSets model
+        if trampolines and trampolines.Park:FindFirstChild("SwingSets") then
+            trampolines.Park.SwingSets:Destroy()
+            print("Removed model: SwingSets")
+        end
+
+        -- Remove Seesaw model
+        if trampolines and trampolines.Park:FindFirstChild("Seesaw") then
+            trampolines.Park.Seesaw:Destroy()
+            print("Removed model: Seesaw")
+        end
+
+        -- Remove Roundabout model
+        if trampolines and trampolines.Park:FindFirstChild("Roundabout") then
+            trampolines.Park.Roundabout:Destroy()
+            print("Removed model: Roundabout")
+        end
+
+        -- Remove Doors model from MainMap!Default
+        local interiors = Workspace:FindFirstChild("Interiors")
+        if interiors then
+            local mainMap = interiors:FindFirstChild("MainMap!Default")
+            if mainMap then
+                local doors = mainMap:FindFirstChild("Doors")
+                if doors then
+                    doors:Destroy()
+                    print("Removed model: Doors")
+                end
+            end
+        end
+        
+        task.wait(1) -- Wait before checking again
     end
 end
 
--- Start the continuous removal of models
+-- Start the continuous removal of specified models
 task.spawn(continuallyRemoveModels)
 
 -- Add the Dehash Button
