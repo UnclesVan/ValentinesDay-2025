@@ -63,10 +63,10 @@ local function renameExistingRemotes()
     end
 end
 
--- Function to display dehashed message
-local function displayDehashedMessage()
-    local uiElement = game:GetService("Players").LocalPlayer.PlayerGui.HintApp.LargeTextLabel
-    uiElement.Text = "Remotes has been Dehashed!"
+-- Function to display a message in the large text label
+local function displayMessage(text)
+    local uiElement = game.Players.LocalPlayer.PlayerGui:WaitForChild("HintApp"):WaitForChild("LargeTextLabel")
+    uiElement.Text = text
     uiElement.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
     wait(3)
     uiElement.Text = ""
@@ -99,20 +99,18 @@ end
 -- Start the periodic check in a coroutine (non-blocking)
 coroutine.wrap(periodicCheck)()
 
--- Initial scan and rename for all existing remotes (print once)
+-- Initial scan and rename for all existing remotes
 renameExistingRemotes()
 
 -- Display dehashed message
-displayDehashedMessage()
+displayMessage("Remotes have been Dehashed!")
 
 -- Set the flag to prevent printing more than once
 printedOnce = true
 
 print("Script initialized and monitoring remotes.")
 
-
-
-task.wait("2")
+task.wait(2)
 
 -- Ensure this script is a LocalScript
 local Players = game:GetService("Players") -- Get players service
@@ -121,34 +119,15 @@ local playerGui = player:WaitForChild("PlayerGui") -- Wait for the PlayerGui to 
 local hintApp = playerGui:WaitForChild("HintApp") -- Ensure HintApp exists in the PlayerGui
 local largeTextLabel = hintApp:WaitForChild("LargeTextLabel") -- Ensure LargeTextLabel exists in HintApp
 
--- Function to display dehashed message
-local function displayDehashedMessage()
-    largeTextLabel.Text = "" -- Set the message text
-    largeTextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
-    wait(3) -- Wait for 3 seconds
-    largeTextLabel.Text = "PET FARM IN DEVLOPMENT" -- Clear the message text
-    largeTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
-end
-
--- Call the function to display the message
-displayDehashedMessage()
-
-
--- Client-side script (LocalScript in StarterGui or a ScreenGui within PlayerGui)
-
--- GUI Elements (created dynamically)
-local Player = game.Players.LocalPlayer
-local PlayerGui = Player:WaitForChild("PlayerGui")
-
 -- Create GUI Elements
 local ba = Instance.new("ScreenGui")
 local ca = Instance.new("TextLabel") -- Main Label
 local ab = Instance.new("TextLabel") -- Status Label
 local afkTimerLabel = Instance.new("TextLabel") -- Timer label
 
--- Properties
+-- Properties for Anti AFK Script GUI
 ba.Name = "ba"
-ba.Parent = PlayerGui
+ba.Parent = playerGui
 ba.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 -- Setup main label properties
@@ -222,11 +201,9 @@ local function onIdled()
 end
 
 -- Connect the Idled event to the anti-AFK function
-Player.Idled:Connect(onIdled)
+player.Idled:Connect(onIdled)
 
 print("Anti AFK has been enabled.")
-
-
 
 -- Load required libraries
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
@@ -400,7 +377,7 @@ local function loadInterior(interiorName)
     replicatedStorage.API:FindFirstChild("LocationAPI/SetLocation"):FireServer(unpack(locationArgs))
     print("✅ Set location to: " .. interiorName)
 
-    local player = game:GetService("Players").LocalPlayer
+    local player = game.Players.LocalPlayer
     local character = player.Character or player.CharacterAdded:Wait()
 
     local gui = player.PlayerGui:FindFirstChild(interiorName)
@@ -649,5 +626,3 @@ SaveManager:BuildConfigSection(Window:AddTab({ Title = "Settings", Icon = "setti
 
 -- Load any autosave configs
 SaveManager:LoadAutoloadConfig()
-
-
