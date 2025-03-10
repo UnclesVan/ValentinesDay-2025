@@ -1,6 +1,6 @@
 -- dehash
 loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoPtMe-/refs/heads/main/dehashwithslashinmiddle')))()
-
+task.wait("2")
 
 -- Ensure this script is a LocalScript
 local Players = game:GetService("Players") -- Get players service
