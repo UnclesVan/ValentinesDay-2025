@@ -1,98 +1,76 @@
 -- Load services
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-
--- Configuration for teleportation speed and round delay
-local teleportSpeed = 0.5 -- Adjust this value for teleportation speed (lower is faster)
-local roundDelay = 2 -- Adjust this value for delay before the next round of teleportation
-
--- Toggle for clicking
-local clicking = true -- Set this to false to stop clicking
 
 -- Function to simulate a screen click
 local function clickScreen()
-    if clicking then
-        local screenWidth = Workspace.CurrentCamera.ViewportSize.X
-        local screenHeight = Workspace.CurrentCamera.ViewportSize.Y
+    local screenWidth = workspace.CurrentCamera.ViewportSize.X
+    local screenHeight = workspace.CurrentCamera.ViewportSize.Y
 
-        local clickX = screenWidth / 2
-        local clickY = screenHeight / 2
+    local clickX = screenWidth / 2
+    local clickY = screenHeight / 2
 
-        -- Simulate a mouse press and release
-        VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
-        wait(0.1) -- Adjust for click speed
-        VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
-    end
+    print("Clicking screen at:", clickX, clickY)
+
+    -- Simulate a mouse press and release
+    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
+    wait(0.1)
+    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
 end
 
--- Function to continuously click the screen (optional)
-local function startClicking()
-    while true do
-        clickScreen()
-        wait(0.1) -- Adjust for click speed
-    end
+-- Loop: Clicks the screen every 3 seconds
+while true do
+    clickScreen()
+    wait(3) -- Change this for longer/shorter delays
 end
 
--- Function to teleport to targets
-local function teleportToTargets()
-    -- Access the IceCubeHillMinigame
-    local iceCubeHillMinigame = Workspace.Interiors:FindFirstChild("IceCubeHillMinigame")
 
-    if iceCubeHillMinigame then
-        print("IceCubeHillMinigame found.")
+task.wait(3)
+local player = game.Players.LocalPlayer
 
-        -- Iterate through each model within IceCubeHillMinigame
-        for _, model in pairs(iceCubeHillMinigame:GetChildren()) do
-            local targetsFolder = model:FindFirstChild("Targets")
-            if targetsFolder then
-                print("Targets folder found in model: " .. model.Name)
+if not player then
+    warn("This script must be run in a LocalScript.")
+    return
+end
 
-                -- Iterate through each target in the Targets folder
-                for _, target in pairs(targetsFolder:GetDescendants()) do
-                    if target:IsA("BasePart") then
-                        -- Check if LocalPlayer and Character are valid
-                        local player = Players.LocalPlayer
-                        local character = player.Character or player.CharacterAdded:Wait()
-                        local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
-                        humanoidRootPart.CFrame = target.CFrame -- Teleport to the part's CFrame
-                        print("Teleported to target: " .. target.Name) -- Print the name of the part
-                        wait(teleportSpeed) -- Use configurable teleport speed
-                        wait(0.2) -- Optional wait between teleports to prevent rapid fire (adjust as needed)
-                    end
-                end
-            else
-                warn("Targets folder not found in model: " .. model.Name)
+-- Path to the IceCubeHillMinigame folder
+local iceCubeHillMinigameFolder = workspace:FindFirstChild("Interiors"):FindFirstChild("IceCubeHillMinigame")
+
+-- Specify the name of the MeshPart
+local decalPartName = "DecalPart"
+local decalParts = {} -- Table to store found DecalParts
+
+-- Function to find DecalParts
+local function findDecalParts()
+    decalParts = {} -- Reset the decalParts table
+    if iceCubeHillMinigameFolder then
+        for _, model in ipairs(iceCubeHillMinigameFolder:GetChildren()) do
+            local decalPart = model:FindFirstChild(decalPartName)
+            if decalPart and decalPart:IsA("MeshPart") then
+                table.insert(decalParts, decalPart) -- Collect DecalParts
             end
         end
     else
-        warn("IceCubeHillMinigame not found in Workspace!")
+        print("IceCubeHillMinigame folder not found in Interiors.")
     end
 end
 
--- Start clicking on the screen in a separate thread (optional)
-coroutine.wrap(startClicking)()
+-- Keep finding decal parts on initial run
+findDecalParts()
 
--- Main loop
+-- Main loop for teleportation
 while true do
-    -- Check if player is in the "IceCubeHillMinigame"
-    local player = Players.LocalPlayer
-    local character = player.Character or player.CharacterAdded:Wait()
-
-    -- Check if the player is within the IceCubeHillMinigame's boundaries
-    if character and character:FindFirstChild("HumanoidRootPart") then
-        local inMinigame = Workspace:FindFirstChild("Interiors"):FindFirstChild("IceCubeHillMinigame")
-        
-        if inMinigame then
-            teleportToTargets()
-            wait(roundDelay) -- Use configurable round delay before the next round of teleportation
-        else
-            print("Not in IceCubeHillMinigame. Waiting...")
-            wait(1) -- Optional wait time for when not in the minigame
+    if #decalParts > 0 then
+        for i, decalPart in ipairs(decalParts) do
+            humanoidRootPart.CFrame = decalPart.CFrame * CFrame.new(0, 5, 0) -- Adjust the height as necessary
+            print("Teleporting to DecalPart " .. i .. ": " .. decalPart.Name)
+            wait(1)  -- Pause for 1 second before moving to the next
         end
     else
-        warn("Character or HumanoidRootPart not found!")
-        wait(1) -- Wait and check again if the character is valid
+        print("No DecalParts found. Waiting...")
+        wait(2)  -- Wait before rechecking for DecalParts
+        findDecalParts()  -- Reattempt to find DecalParts again in the next loop
     end
 end
