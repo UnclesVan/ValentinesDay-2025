@@ -1,7 +1,38 @@
+-- Load services
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
 -- Configuration for teleportation speed and round delay
 local teleportSpeed = 0.5 -- Adjust this value for teleportation speed (lower is faster)
 local roundDelay = 2 -- Adjust this value for delay before the next round of teleportation
-local targetDelay = 1 -- Adjust this value for delay between teleportation to each target
+
+-- Toggle for clicking
+local clicking = true -- Set this to false to stop clicking
+
+-- Function to simulate a screen click
+local function clickScreen()
+    if clicking then
+        local screenWidth = Workspace.CurrentCamera.ViewportSize.X
+        local screenHeight = Workspace.CurrentCamera.ViewportSize.Y
+
+        local clickX = screenWidth / 2
+        local clickY = screenHeight / 2
+
+        -- Simulate a mouse press and release
+        VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
+        wait(0.1) -- Adjust for click speed
+        VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
+    end
+end
+
+-- Function to continuously click the screen (optional)
+local function startClicking()
+    while true do
+        clickScreen()
+        wait(0.1) -- Adjust for click speed
+    end
+end
 
 -- Function to teleport to targets
 local function teleportToTargets()
@@ -27,7 +58,8 @@ local function teleportToTargets()
 
                         humanoidRootPart.CFrame = target.CFrame -- Teleport to the part's CFrame
                         print("Teleported to target: " .. target.Name) -- Print the name of the part
-                        wait(targetDelay) -- Wait between each target teleportation
+                        wait(teleportSpeed) -- Use configurable teleport speed
+                        wait(0.2) -- Optional wait between teleports to prevent rapid fire (adjust as needed)
                     end
                 end
             else
@@ -36,5 +68,31 @@ local function teleportToTargets()
         end
     else
         warn("IceCubeHillMinigame not found in Workspace!")
+    end
+end
+
+-- Start clicking on the screen in a separate thread (optional)
+coroutine.wrap(startClicking)()
+
+-- Main loop
+while true do
+    -- Check if player is in the "IceCubeHillMinigame"
+    local player = Players.LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+
+    -- Check if the player is within the IceCubeHillMinigame's boundaries
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        local inMinigame = Workspace:FindFirstChild("Interiors"):FindFirstChild("IceCubeHillMinigame")
+        
+        if inMinigame then
+            teleportToTargets()
+            wait(roundDelay) -- Use configurable round delay before the next round of teleportation
+        else
+            print("Not in IceCubeHillMinigame. Waiting...")
+            wait(1) -- Optional wait time for when not in the minigame
+        end
+    else
+        warn("Character or HumanoidRootPart not found!")
+        wait(1) -- Wait and check again if the character is valid
     end
 end
