@@ -91,31 +91,13 @@ local function clickingLoop()
     end
 end
 
--- Start the teleportation function in a coroutine
-local function teleportToDecalParts()
-    while true do
-        if teleportingEnabled then
-            local iceCubeHillMinigameFolder = getIceCubeHillMinigameFolder()
-
-            findDecalParts(iceCubeHillMinigameFolder)
-
-            if #decalParts > 0 then
-                for i, decalPart in ipairs(decalParts) do
-                    print("Teleporting to DecalPart " .. i .. ": " .. decalPart.Name .. " at position " .. tostring(decalPart.Position))
-                    wait(0.5)
-                    humanoidRootPart.CFrame = decalPart.CFrame * CFrame.new(0, 5, 0)
-                    wait(1)
-                    clickScreen()
-                    wait(0.5)
-                end
-            else
-                print("No DecalParts found. Waiting...")
-            end
-            
-            wait(2)
-        else
-            wait(1) -- Wait a bit before checking if teleportation is enabled again
-        end
+-- Function to handle the loadstring execution for Tora
+local function executeToraScript()
+    while teleportingEnabled do
+        -- Execute the given loadstring
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/gumanba/Scripts/main/AdoptMeEvent"))()
+        print("Executed the AdoptMeEvent script.")
+        wait(5) -- Wait 5 seconds before the next execution
     end
 end
 
@@ -148,11 +130,22 @@ ToggleClicking:OnChanged(function()
     print("Clicking Enabled:", clickingEnabled)
 end)
 
--- Add toggle for enabling/disabling teleportation
-local ToggleTeleportation = Tabs.IceDimension:AddToggle("TeleportToggle", { Title = "Enable Teleportation", Default = false }) -- Default set to false
+-- Add toggle for executing loadstring (Tora)
+local ToggleTeleportation = Tabs.IceDimension:AddToggle("TeleportToggle", { Title = "Tora", Default = false }) -- Default set to false
 ToggleTeleportation:OnChanged(function()
     teleportingEnabled = ToggleTeleportation.Value
-    print("Teleportation Enabled:", teleportingEnabled)
+    print("Tora Enabled:", teleportingEnabled)
+    
+    -- Start or stop teleportation based on toggle state
+    if teleportingEnabled then
+        print("Starting Tora script execution.")
+        while teleportingEnabled do
+            -- Execute the loadstring each loop iteration
+            executeToraScript()
+        end
+    else
+        print("Tora has been fully disabled.")
+    end
 end)
 
 -- Add a slider for adjusting click speed
@@ -170,7 +163,6 @@ local ClickSpeedSlider = Tabs.IceDimension:AddSlider("ClickSpeedSlider", {
 
 -- Start the clicking loop in a coroutine
 coroutine.wrap(clickingLoop)()
-coroutine.wrap(teleportToDecalParts)()
 
 -- Notify that the script has been loaded
 Fluent:Notify({
