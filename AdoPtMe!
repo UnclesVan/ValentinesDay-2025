@@ -1,12 +1,12 @@
 -- Load services
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local RunService = game:GetService("RunService")
 local workspace = game:GetService("Workspace")
 
 -- Control variables
 local clickingEnabled = false -- Set to false to disable clicking by default
-local teleportingEnabled = true -- Set to true to enable teleporting
+local teleportingEnabled = false -- Set to false to disable teleportation by default
+local clickDelay = 0.1 -- Default click delay (in seconds)
 
 -- Check if the script is running in a LocalScript context
 local player = Players.LocalPlayer
@@ -21,25 +21,23 @@ local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 local decalPartName = "DecalPart"
 local decalParts = {} -- Table to store found DecalParts
 
--- Function to recursively find all DecalParts in models
+-- Recursive function to find all DecalParts in models
 local function findDecalPartsInModel(model)
     for _, child in ipairs(model:GetChildren()) do
         if child:IsA("Model") then
-            -- Recursively search in this child model
             findDecalPartsInModel(child)
         elseif child.Name == decalPartName and child:IsA("MeshPart") then
-            -- If it's a DecalPart, add to the table
             table.insert(decalParts, child)
-            print("Found DecalPart: " .. child.Name .. " at position " .. tostring(child.Position)) -- Log the found DecalPart
+            print("Found DecalPart: " .. child.Name .. " at position " .. tostring(child.Position))
         end
     end
 end
 
 -- Function to find all DecalParts
 local function findDecalParts(iceCubeHillMinigameFolder)
-    decalParts = {} -- Reset the decalParts table
-    findDecalPartsInModel(iceCubeHillMinigameFolder) -- Start the recursive search
-    print("Total DecalParts Found: " .. #decalParts) -- Print the total number of DecalParts found
+    decalParts = {}
+    findDecalPartsInModel(iceCubeHillMinigameFolder)
+    print("Total DecalParts Found: " .. #decalParts)
 end
 
 -- Function to simulate a screen click
@@ -57,7 +55,6 @@ local function clickScreen()
 
     if clickingEnabled then
         print("Clicking screen at:", clickX, clickY)
-        -- Simulate mouse press and release
         VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
         wait(0.1)
         VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
@@ -66,66 +63,133 @@ end
 
 -- Function to continuously check for the IceCubeHillMinigame folder
 local function getIceCubeHillMinigameFolder()
-    while true do
+    while teleportingEnabled do -- Only search if teleporting is enabled
         local interiorsFolder = workspace:FindFirstChild("Interiors")
         if interiorsFolder then
             local iceCubeHillMinigameFolder = interiorsFolder:FindFirstChild("IceCubeHillMinigame")
             if iceCubeHillMinigameFolder then
-                return iceCubeHillMinigameFolder -- Return the folder if found
+                return iceCubeHillMinigameFolder
             else
                 print("IceCubeHillMinigame folder not found. Checking again...")
             end
         else
             print("Interiors folder not found. Checking again...")
         end
-        wait(2) -- Wait before checking again
+        wait(2)
     end
 end
 
--- Set up the ScreenGui and Button
-local ScreenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-local button = Instance.new("TextButton")
-button.Size = UDim2.new(0, 200, 0, 50)
-button.Position = UDim2.new(0.5, -100, 0.349999994, -200) -- Updated position as specified
-button.Text = "Enable Clicking"
-button.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
-button.TextColor3 = Color3.fromRGB(255, 255, 255)
-button.Parent = ScreenGui
+-- Loop to handle clicking at specified intervals
+local function clickingLoop()
+    while true do
+        if clickingEnabled then
+            clickScreen()
+            wait(clickDelay) -- Wait according to the current click speed setting
+        else
+            wait(0.1) -- Check once in a while if clicking is enabled
+        end
+    end
+end
 
--- Button click event to toggle clicking and teleporting
-button.MouseButton1Click:Connect(function()
-    clickingEnabled = not clickingEnabled -- Toggle the clicking state
-    button.Text = clickingEnabled and "Disable Clicking" or "Enable Clicking"
+-- Start the teleportation function in a coroutine
+local function teleportToDecalParts()
+    while true do
+        if teleportingEnabled then
+            local iceCubeHillMinigameFolder = getIceCubeHillMinigameFolder()
+
+            findDecalParts(iceCubeHillMinigameFolder)
+
+            if #decalParts > 0 then
+                for i, decalPart in ipairs(decalParts) do
+                    print("Teleporting to DecalPart " .. i .. ": " .. decalPart.Name .. " at position " .. tostring(decalPart.Position))
+                    wait(0.5)
+                    humanoidRootPart.CFrame = decalPart.CFrame * CFrame.new(0, 5, 0)
+                    wait(1)
+                    clickScreen()
+                    wait(0.5)
+                end
+            else
+                print("No DecalParts found. Waiting...")
+            end
+            
+            wait(2)
+        else
+            wait(1) -- Wait a bit before checking if teleportation is enabled again
+        end
+    end
+end
+
+-- Integration with Fluent UI
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "Fluent " .. Fluent.Version,
+    SubTitle = "by dawid",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+    Main = Window:AddTab({ Title = "Main", Icon = "" }),
+    IceDimension = Window:AddTab({ Title = "IceDimension", Icon = "snowflake" })
+}
+
+local Options = Fluent.Options
+
+-- Add toggle for enabling/disabling clicking
+local ToggleClicking = Tabs.IceDimension:AddToggle("ClickToggle", { Title = "Enable Clicking", Default = false })
+ToggleClicking:OnChanged(function()
+    clickingEnabled = ToggleClicking.Value
+    print("Clicking Enabled:", clickingEnabled)
 end)
 
--- Continuous teleportation loop to each found DecalPart
-local function teleportToDecalParts()
-    local iceCubeHillMinigameFolder = getIceCubeHillMinigameFolder() -- Get the folder, it guarantees it's valid
+-- Add toggle for enabling/disabling teleportation
+local ToggleTeleportation = Tabs.IceDimension:AddToggle("TeleportToggle", { Title = "Enable Teleportation", Default = false }) -- Default set to false
+ToggleTeleportation:OnChanged(function()
+    teleportingEnabled = ToggleTeleportation.Value
+    print("Teleportation Enabled:", teleportingEnabled)
+end)
 
-    while true do
-        findDecalParts(iceCubeHillMinigameFolder) -- Find DecalParts
-
-        if teleportingEnabled and #decalParts > 0 then
-            for i, decalPart in ipairs(decalParts) do
-                -- Log the name and position of the DecalPart before teleporting
-                print("Teleporting to DecalPart " .. i .. ": " .. decalPart.Name .. " at position " .. tostring(decalPart.Position))
-                
-                -- Add a brief wait before teleporting to allow for smooth action
-                wait(0.5)  -- Wait before teleportation
-
-                humanoidRootPart.CFrame = decalPart.CFrame * CFrame.new(0, 5, 0) -- Adjust height if necessary
-                wait(1)  -- Pause after teleporting to ensure stability
-
-                clickScreen() -- Click the screen after teleporting
-                wait(0.5)  -- Brief pause after clicking
-            end
-        else
-            print("No DecalParts found. Waiting...") -- Indicate when no DecalParts are available
-        end
-        
-        wait(2) -- Pause briefly before the next search (you can adjust this time)
+-- Add a slider for adjusting click speed
+local ClickSpeedSlider = Tabs.IceDimension:AddSlider("ClickSpeedSlider", {
+    Title = "Click Speed (seconds)",
+    Default = 0.1,
+    Min = 0.1,
+    Max = 3,
+    Rounding = 1,
+    Callback = function(value)
+        clickDelay = value
+        print("Click Speed set to:", clickDelay)
     end
-end
+})
 
--- Start the teleportation function in a coroutine to allow for further expansions
+-- Start the clicking loop in a coroutine
+coroutine.wrap(clickingLoop)()
 coroutine.wrap(teleportToDecalParts)()
+
+-- Notify that the script has been loaded
+Fluent:Notify({
+    Title = "Fluent",
+    Content = "The script has been loaded.",
+    Duration = 5
+})
+
+-- Addons integration
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+InterfaceManager:SetFolder("FluentScriptHub")
+SaveManager:SetFolder("FluentScriptHub/specific-game")
+InterfaceManager:BuildInterfaceSection(Tabs.Main)
+SaveManager:BuildConfigSection(Tabs.Main)
+
+Window:SelectTab(1)
+
+-- Load any auto-load configurations
+SaveManager:LoadAutoloadConfig()
