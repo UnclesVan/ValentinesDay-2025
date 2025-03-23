@@ -1,32 +1,15 @@
 -- Load services
+local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
 
--- Function to simulate a screen click
-local function clickScreen()
-    local screenWidth = workspace.CurrentCamera.ViewportSize.X
-    local screenHeight = workspace.CurrentCamera.ViewportSize.Y
+-- Control variables
+local clickingEnabled = false -- Set to false to disable clicking by default
+local teleportingEnabled = true -- Set to true to enable teleporting
 
-    local clickX = screenWidth / 2
-    local clickY = screenHeight / 2
-
-    print("Clicking screen at:", clickX, clickY)
-
-    -- Simulate a mouse press and release
-    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
-    wait(0.1)
-    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
-end
-
--- Loop: Clicks the screen every 3 seconds
-while true do
-    clickScreen()
-    wait(3) -- Change this for longer/shorter delays
-end
-
-
-task.wait(3)
-local player = game.Players.LocalPlayer
-
+-- Check if the script is running in a LocalScript context
+local player = Players.LocalPlayer
 if not player then
     warn("This script must be run in a LocalScript.")
     return
@@ -35,42 +18,114 @@ end
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
--- Path to the IceCubeHillMinigame folder
-local iceCubeHillMinigameFolder = workspace:FindFirstChild("Interiors"):FindFirstChild("IceCubeHillMinigame")
-
--- Specify the name of the MeshPart
 local decalPartName = "DecalPart"
 local decalParts = {} -- Table to store found DecalParts
 
--- Function to find DecalParts
-local function findDecalParts()
+-- Function to recursively find all DecalParts in models
+local function findDecalPartsInModel(model)
+    for _, child in ipairs(model:GetChildren()) do
+        if child:IsA("Model") then
+            -- Recursively search in this child model
+            findDecalPartsInModel(child)
+        elseif child.Name == decalPartName and child:IsA("MeshPart") then
+            -- If it's a DecalPart, add to the table
+            table.insert(decalParts, child)
+            print("Found DecalPart: " .. child.Name .. " at position " .. tostring(child.Position)) -- Log the found DecalPart
+        end
+    end
+end
+
+-- Function to find all DecalParts
+local function findDecalParts(iceCubeHillMinigameFolder)
     decalParts = {} -- Reset the decalParts table
-    if iceCubeHillMinigameFolder then
-        for _, model in ipairs(iceCubeHillMinigameFolder:GetChildren()) do
-            local decalPart = model:FindFirstChild(decalPartName)
-            if decalPart and decalPart:IsA("MeshPart") then
-                table.insert(decalParts, decalPart) -- Collect DecalParts
+    findDecalPartsInModel(iceCubeHillMinigameFolder) -- Start the recursive search
+    print("Total DecalParts Found: " .. #decalParts) -- Print the total number of DecalParts found
+end
+
+-- Function to simulate a screen click
+local function clickScreen()
+    local camera = workspace.CurrentCamera
+    if not camera then
+        return
+    end
+
+    local screenWidth = camera.ViewportSize.X
+    local screenHeight = camera.ViewportSize.Y
+
+    local clickX = screenWidth / 2
+    local clickY = screenHeight / 2
+
+    if clickingEnabled then
+        print("Clicking screen at:", clickX, clickY)
+        -- Simulate mouse press and release
+        VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
+        wait(0.1)
+        VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
+    end
+end
+
+-- Function to continuously check for the IceCubeHillMinigame folder
+local function getIceCubeHillMinigameFolder()
+    while true do
+        local interiorsFolder = workspace:FindFirstChild("Interiors")
+        if interiorsFolder then
+            local iceCubeHillMinigameFolder = interiorsFolder:FindFirstChild("IceCubeHillMinigame")
+            if iceCubeHillMinigameFolder then
+                return iceCubeHillMinigameFolder -- Return the folder if found
+            else
+                print("IceCubeHillMinigame folder not found. Checking again...")
             end
+        else
+            print("Interiors folder not found. Checking again...")
         end
-    else
-        print("IceCubeHillMinigame folder not found in Interiors.")
+        wait(2) -- Wait before checking again
     end
 end
 
--- Keep finding decal parts on initial run
-findDecalParts()
+-- Set up the ScreenGui and Button
+local ScreenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+local button = Instance.new("TextButton")
+button.Size = UDim2.new(0, 200, 0, 50)
+button.Position = UDim2.new(0.5, -100, 0.349999994, -200) -- Updated position as specified
+button.Text = "Enable Clicking"
+button.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+button.TextColor3 = Color3.fromRGB(255, 255, 255)
+button.Parent = ScreenGui
 
--- Main loop for teleportation
-while true do
-    if #decalParts > 0 then
-        for i, decalPart in ipairs(decalParts) do
-            humanoidRootPart.CFrame = decalPart.CFrame * CFrame.new(0, 5, 0) -- Adjust the height as necessary
-            print("Teleporting to DecalPart " .. i .. ": " .. decalPart.Name)
-            wait(1)  -- Pause for 1 second before moving to the next
+-- Button click event to toggle clicking and teleporting
+button.MouseButton1Click:Connect(function()
+    clickingEnabled = not clickingEnabled -- Toggle the clicking state
+    button.Text = clickingEnabled and "Disable Clicking" or "Enable Clicking"
+end)
+
+-- Continuous teleportation loop to each found DecalPart
+local function teleportToDecalParts()
+    local iceCubeHillMinigameFolder = getIceCubeHillMinigameFolder() -- Get the folder, it guarantees it's valid
+
+    while true do
+        findDecalParts(iceCubeHillMinigameFolder) -- Find DecalParts
+
+        if teleportingEnabled and #decalParts > 0 then
+            for i, decalPart in ipairs(decalParts) do
+                -- Log the name and position of the DecalPart before teleporting
+                print("Teleporting to DecalPart " .. i .. ": " .. decalPart.Name .. " at position " .. tostring(decalPart.Position))
+                
+                -- Add a brief wait before teleporting to allow for smooth action
+                wait(0.5)  -- Wait before teleportation
+
+                humanoidRootPart.CFrame = decalPart.CFrame * CFrame.new(0, 5, 0) -- Adjust height if necessary
+                wait(1)  -- Pause after teleporting to ensure stability
+
+                clickScreen() -- Click the screen after teleporting
+                wait(0.5)  -- Brief pause after clicking
+            end
+        else
+            print("No DecalParts found. Waiting...") -- Indicate when no DecalParts are available
         end
-    else
-        print("No DecalParts found. Waiting...")
-        wait(2)  -- Wait before rechecking for DecalParts
-        findDecalParts()  -- Reattempt to find DecalParts again in the next loop
+        
+        wait(2) -- Pause briefly before the next search (you can adjust this time)
     end
 end
+
+-- Start the teleportation function in a coroutine to allow for further expansions
+coroutine.wrap(teleportToDecalParts)()
