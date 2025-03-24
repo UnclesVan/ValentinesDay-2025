@@ -1,12 +1,133 @@
+-- Ensure this script is a LocalScript
+local Players = game:GetService("Players") -- Get players service
+local player = Players.LocalPlayer -- Get the LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui") -- Wait for the PlayerGui to exist
+local hintApp = playerGui:WaitForChild("HintApp") -- Ensure HintApp exists in the PlayerGui
+local largeTextLabel = hintApp:WaitForChild("LargeTextLabel") -- Ensure LargeTextLabel exists in HintApp
+
+-- Function to display dehashed message
+local function displayDehashedMessage()
+    largeTextLabel.Text = "" -- Set the message text
+    largeTextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
+    wait(3) -- Wait for 3 seconds
+    largeTextLabel.Text = "🌹 Will Teleport If there Is any Roses and Hearts Available and are added to the Game 🌹" -- Clear the message text
+    largeTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
+end
+
+-- Call the function to display the message
+displayDehashedMessage()
+
+
+-- Client-side script (LocalScript in StarterGui or a ScreenGui within PlayerGui)
+
+-- GUI Elements (created dynamically)
+local Player = game.Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+-- Create GUI Elements
+local ba = Instance.new("ScreenGui")
+local ca = Instance.new("TextLabel") -- Main Label
+local ab = Instance.new("TextLabel") -- Status Label
+local afkTimerLabel = Instance.new("TextLabel") -- Timer label
+
+-- Properties
+ba.Name = "ba"
+ba.Parent = PlayerGui
+ba.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Setup main label properties
+ca.Name = "ca"
+ca.Parent = ba
+ca.Active = true
+ca.BackgroundTransparency = 1
+ca.Position = UDim2.new(0.01, 0, 0.01, 0)
+ca.Size = UDim2.new(0, 500, 0, 120)
+ca.Font = Enum.Font.SourceSansSemibold
+ca.Text = "Anti AFK Script"
+ca.TextColor3 = Color3.new(0, 1, 0)
+ca.TextSize = 64
+ca.TextStrokeTransparency = 0
+ca.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+ca.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Setup status label properties
+ab.Name = "ab"
+ab.Parent = ba
+ab.BackgroundTransparency = 1
+ab.Position = UDim2.new(0.01, 0, 0.2, 0)
+ab.Size = UDim2.new(0, 500, 0, 120)
+ab.Font = Enum.Font.ArialBold
+ab.Text = "Status: Active"
+ab.TextColor3 = Color3.new(0, 1, 0)
+ab.TextStrokeTransparency = 0
+ab.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+ab.TextSize = 64
+ab.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Setup AFK timer label properties
+afkTimerLabel.Name = "afkTimerLabel"
+afkTimerLabel.Parent = ba
+afkTimerLabel.BackgroundTransparency = 1
+afkTimerLabel.Position = UDim2.new(0.01, 0, 0.39, 0)
+afkTimerLabel.Size = UDim2.new(0, 500, 0, 120)
+afkTimerLabel.Font = Enum.Font.Arial
+afkTimerLabel.Text = "Total Time: 0s"
+afkTimerLabel.TextColor3 = Color3.new(0, 1, 0)
+afkTimerLabel.TextSize = 64
+afkTimerLabel.TextStrokeTransparency = 0
+afkTimerLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+afkTimerLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Anti-AFK Logic: Uses VirtualUser to simulate input
+local VirtualUser = game:GetService("VirtualUser")
+local afkTimer = 0
+
+-- Function to update the AFK timer
+local function updateAfkTimer()
+    while true do
+        task.wait(1)
+        afkTimer = afkTimer + 1
+        afkTimerLabel.Text = "Total Time: " .. afkTimer .. "s"
+    end
+end
+
+-- Start the timer loop in a coroutine
+coroutine.wrap(updateAfkTimer)()
+
+-- Function to handle when the player becomes idle
+local function onIdled()
+    -- Simulate clicking the second mouse button (right-click)
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+
+    ab.Text = "Roblox tried to kick you but I kicked him instead"
+    task.wait(2)
+    ab.Text = "Status: Active"
+end
+
+-- Connect the Idled event to the anti-AFK function
+Player.Idled:Connect(onIdled)
+
+print("Anti AFK has been enabled.")
+
+
+
 -- Load services
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local workspace = game:GetService("Workspace")
+local Workspace = game:GetService("Workspace")
 
--- Control variables
+-- Control Variables
 local clickingEnabled = false -- Set to false to disable clicking by default
+local removeProfileEnabled = false -- Set to false to disable profile removal by default
 local teleportingEnabled = false -- Set to false to disable teleportation by default
 local clickDelay = 0.1 -- Default click delay (in seconds)
+local decalPartName = "DecalPart"
+local decalParts = {}  -- Table to store found DecalParts
+local uiFrame, statusLabel, timerLabel, shardAmountLabel, timeInMinigameLabel -- UI elements
+local isMinigameActive = false -- Tracks if the minigame is active
+local scanningActive = false -- Tracks if folder scanning is active
+local hasTeleported = false -- Track if a teleportation has occurred
 
 -- Check if the script is running in a LocalScript context
 local player = Players.LocalPlayer
@@ -18,31 +139,9 @@ end
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
-local decalPartName = "DecalPart"
-local decalParts = {} -- Table to store found DecalParts
-
--- Recursive function to find all DecalParts in models
-local function findDecalPartsInModel(model)
-    for _, child in ipairs(model:GetChildren()) do
-        if child:IsA("Model") then
-            findDecalPartsInModel(child)
-        elseif child.Name == decalPartName and child:IsA("MeshPart") then
-            table.insert(decalParts, child)
-            print("Found DecalPart: " .. child.Name .. " at position " .. tostring(child.Position))
-        end
-    end
-end
-
--- Function to find all DecalParts
-local function findDecalParts(iceCubeHillMinigameFolder)
-    decalParts = {}
-    findDecalPartsInModel(iceCubeHillMinigameFolder)
-    print("Total DecalParts Found: " .. #decalParts)
-end
-
 -- Function to simulate a screen click
 local function clickScreen()
-    local camera = workspace.CurrentCamera
+    local camera = Workspace.CurrentCamera
     if not camera then
         return
     end
@@ -54,51 +153,214 @@ local function clickScreen()
     local clickY = screenHeight / 2
 
     if clickingEnabled then
-        print("Clicking screen at:", clickX, clickY)
         VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
         wait(0.1)
         VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
     end
 end
 
--- Function to continuously check for the IceCubeHillMinigame folder
+-- Function to find all DecalParts in models
+local function findDecalPartsInModel(model)
+    for _, child in ipairs(model:GetChildren()) do
+        if child:IsA("Model") then
+            findDecalPartsInModel(child)
+        elseif child.Name == decalPartName and child:IsA("MeshPart") then
+            table.insert(decalParts, child)
+        end
+    end
+end
+
+-- Function to find all DecalParts
+local function findDecalParts(iceCubeHillMinigameFolder)
+    decalParts = {} -- Clear existing parts to allow re-finding
+    findDecalPartsInModel(iceCubeHillMinigameFolder)
+    print("Total DecalParts Found: " .. #decalParts)
+end
+
+-- Function to get the IceCubeHillMinigame folder
 local function getIceCubeHillMinigameFolder()
-    while teleportingEnabled do -- Only search if teleporting is enabled
-        local interiorsFolder = workspace:FindFirstChild("Interiors")
-        if interiorsFolder then
-            local iceCubeHillMinigameFolder = interiorsFolder:FindFirstChild("IceCubeHillMinigame")
-            if iceCubeHillMinigameFolder then
-                return iceCubeHillMinigameFolder
-            else
-                print("IceCubeHillMinigame folder not found. Checking again...")
+    local interiorsFolder = Workspace:FindFirstChild("Interiors")
+    if interiorsFolder then
+        local iceCubeHillMinigameFolder = interiorsFolder:FindFirstChild("IceCubeHillMinigame")
+        if iceCubeHillMinigameFolder then
+            return iceCubeHillMinigameFolder
+        end
+    end
+    return nil
+end
+
+-- Function to continuously scan for DecalParts
+local function continuouslyFindDecalParts()
+    scanningActive = true
+    while scanningActive do
+        local iceCubeHillMinigameFolder = getIceCubeHillMinigameFolder()
+        if iceCubeHillMinigameFolder then
+            findDecalParts(iceCubeHillMinigameFolder)
+        else
+            print("IceCubeHillMinigame folder not found. Checking again in 5 seconds...")
+        end
+        wait(5) -- Check every 5 seconds for updates in the folder
+    end
+end
+
+-- Coroutine for clicking loop
+local function clickingLoop()
+    while clickingEnabled do
+        clickScreen()
+        wait(clickDelay) -- Fixed click delay
+    end
+end
+
+-- Coroutine for teleportation to DecalParts
+local function teleportToDecalParts()
+    while teleportingEnabled do
+        if #decalParts > 0 then  -- Check if there are decal parts
+            for i = 1, math.min(4, #decalParts) do
+                local decalPart = decalParts[i]
+                if decalPart then
+                    humanoidRootPart.CFrame = decalPart.CFrame * CFrame.new(0, 5, 0)
+                    wait(1) -- Wait before clicking
+                    clickScreen() -- Click after teleporting
+                    hasTeleported = true  -- Set flag indicating a teleportation has occurred
+                    wait(0.5) -- Wait before teleporting again
+                end
+            end
+        end
+        wait(2) -- Wait before the next round of teleportation
+    end
+end
+
+-- Create a status UI
+local function createStatusUI()
+    local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+
+    uiFrame = Instance.new("Frame")
+    uiFrame.Size = UDim2.new(0.3, 0, 0.2, 0) -- Increased height for additional labels
+    uiFrame.Position = UDim2.new(0.35, 0, 0.05, 0)
+    uiFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Dark background
+    uiFrame.BorderSizePixel = 0
+    uiFrame.Parent = screenGui
+
+    -- Status Label
+    statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, 0, 0.25, 0) -- Changed height to fit
+    statusLabel.Position = UDim2.new(0, 0, 0, 0)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "Teleportation: Disabled"
+    statusLabel.TextColor3 = Color3.new(1, 1, 1) -- White text
+    statusLabel.TextScaled = true
+    statusLabel.Parent = uiFrame
+
+    -- Timer Label
+    timerLabel = Instance.new("TextLabel")
+    timerLabel.Size = UDim2.new(1, 0, 0.25, 0) -- Changed height to fit
+    timerLabel.Position = UDim2.new(0, 0, 0.25, 0)
+    timerLabel.BackgroundColor3 = Color3.new(0, 0, 0) -- Black background
+    timerLabel.TextColor3 = Color3.new(1, 1, 1) -- White text
+    timerLabel.TextScaled = true
+    timerLabel.Text = "Timer: Not Available"
+    timerLabel.Parent = uiFrame
+
+    -- Shard Amount Label
+    shardAmountLabel = Instance.new("TextLabel")
+    shardAmountLabel.Size = UDim2.new(1, 0, 0.25, 0) -- Height for additional label
+    shardAmountLabel.Position = UDim2.new(0, 0, 0.5, 0) -- Position below Timer Label
+    shardAmountLabel.BackgroundTransparency = 1
+    shardAmountLabel.TextColor3 = Color3.new(1, 1, 1) -- White text
+    shardAmountLabel.TextScaled = true
+    shardAmountLabel.Text = "Shards Amount: Not Available"
+    shardAmountLabel.Parent = uiFrame
+
+    -- Time In Minigame Label
+    timeInMinigameLabel = Instance.new("TextLabel")
+    timeInMinigameLabel.Size = UDim2.new(1, 0, 0.25, 0) -- Height for additional label
+    timeInMinigameLabel.Position = UDim2.new(0, 0, 0.75, 0) -- Position below Shards Amount Label
+    timeInMinigameLabel.BackgroundTransparency = 1
+    timeInMinigameLabel.TextColor3 = Color3.new(1, 1, 1) -- White text
+    timeInMinigameLabel.TextScaled = true
+    timeInMinigameLabel.Text = "Time In Minigame: Not Available"
+    timeInMinigameLabel.Parent = uiFrame
+end
+
+-- Function to update the timer and shard/time displays
+local function updateTimerAndLabels()
+    while teleportingEnabled and isMinigameActive do
+        -- Fetching Timer Value
+        local timerLabelFromGame = Workspace:FindFirstChild("Interiors")
+            and Workspace.Interiors:FindFirstChild("IceDimension")
+            and Workspace.Interiors.IceDimension:FindFirstChild("JoinZones")
+            and Workspace.Interiors.IceDimension.JoinZones:FindFirstChild("IceCubeHillMinigame")
+            and Workspace.Interiors.IceDimension.JoinZones.IceCubeHillMinigame:FindFirstChild("Billboard")
+            and Workspace.Interiors.IceDimension.JoinZones.IceCubeHillMinigame.Billboard:FindFirstChild("BillboardGui")
+            and Workspace.Interiors.IceDimension.JoinZones.IceCubeHillMinigame.Billboard.BillboardGui:FindFirstChild("TimerLabel")
+
+        if timerLabelFromGame and timerLabelFromGame:IsA("TextLabel") then
+            timerLabel.Text = "Timer: " .. (timerLabelFromGame.Text or "Not Available")
+
+            local timerValue = tonumber(timerLabelFromGame.Text)
+
+            -- Check timer value and reset to first stage if necessary
+            if timerValue and (timerValue <= 30 or timerValue <= 20) then
+                print("Timer is at", timerValue, "seconds. Resetting to the first stage.")
+                resetToFirstStage() -- Call reset function
+                hasTeleported = false -- Reset teleportation flag after a reset
             end
         else
-            print("Interiors folder not found. Checking again...")
+            timerLabel.Text = "Timer: Not Found." -- Fallback text
+            hasTeleported = false -- Reset if the timer is not found
         end
-        wait(2)
-    end
-end
 
--- Loop to handle clicking at specified intervals
-local function clickingLoop()
-    while true do
-        if clickingEnabled then
-            clickScreen()
-            wait(clickDelay) -- Wait according to the current click speed setting
+        -- Update Shard Amount
+        local shardLabel = player:FindFirstChild("PlayerGui"):FindFirstChild("MinigameInGameApp").Body.Right.Container.ValueLabel
+        if shardLabel and shardLabel:IsA("TextLabel") then
+            shardAmountLabel.Text = "Shards Amount: " .. (shardLabel.Text or "Not Available")
         else
-            wait(0.1) -- Check once in a while if clicking is enabled
+            shardAmountLabel.Text = "Shards Amount: Not Available" -- Fallback text if not found
         end
+
+        -- Update Time In Minigame
+        local timeLabel = player:FindFirstChild("PlayerGui"):FindFirstChild("MinigameInGameApp").Body.Left.Container.ValueLabel
+        if timeLabel and timeLabel:IsA("TextLabel") then
+            timeInMinigameLabel.Text = "Time In Minigame: " .. (timeLabel.Text or "Not Available")
+        else
+            timeInMinigameLabel.Text = "Time In Minigame: Not Available" -- Fallback text if not found
+        end
+
+        wait(1) -- Update every second
     end
 end
 
--- Function to handle the loadstring execution for Tora
-local function executeToraScript()
-    while teleportingEnabled do
-        -- Execute the given loadstring
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/gumanba/Scripts/main/AdoptMeEvent"))()
-        print("Executed the AdoptMeEvent script.")
-        wait(5) -- Wait 5 seconds before the next execution
+-- New function to continuously remove PlayerProfileApp
+local function removePlayerProfileApp()
+    while removeProfileEnabled do
+        local playerProfileApp = player:FindFirstChild("PlayerProfileApp")
+        if playerProfileApp then
+            playerProfileApp:Destroy() -- Remove it if it's found
+            print("PlayerProfileApp removed.")
+        end
+        wait(2) -- Wait before checking again
     end
+end
+
+-- Function to reset to the first stage
+local function resetToFirstStage()
+    print("Resetting to the first stage...")
+
+    -- Attempt to find the necessary folders again
+    local iceCubeHillMinigameFolder = getIceCubeHillMinigameFolder()
+    if not iceCubeHillMinigameFolder then
+        print("Join zone not found. Cannot reset minigame.")
+        return
+    end
+
+    -- Optional: Reset player position
+    if character and character:FindFirstChild("HumanoidRootPart") then
+        humanoidRootPart.CFrame = CFrame.new(0, 5, 0) -- Reset position
+    end
+
+    -- Restart the scanning and timer updates
+    coroutine.wrap(continuouslyFindDecalParts)()
+    coroutine.wrap(updateTimerAndLabels)() -- Update to use new function
 end
 
 -- Integration with Fluent UI
@@ -118,33 +380,60 @@ local Window = Fluent:CreateWindow({
 
 local Tabs = {
     Main = Window:AddTab({ Title = "Main", Icon = "" }),
-    IceDimension = Window:AddTab({ Title = "IceDimension", Icon = "snowflake" })
+    IceDimension = Window:AddTab({ Title = "IceDimension", Icon = "snowflake" }),
 }
 
-local Options = Fluent.Options
+-- Create the status UI at the start
+createStatusUI()
+
+-- Create initial states for the values
+removeProfileEnabled = false
+isMinigameActive = false
 
 -- Add toggle for enabling/disabling clicking
 local ToggleClicking = Tabs.IceDimension:AddToggle("ClickToggle", { Title = "Enable Clicking", Default = false })
 ToggleClicking:OnChanged(function()
     clickingEnabled = ToggleClicking.Value
-    print("Clicking Enabled:", clickingEnabled)
+    if clickingEnabled then
+        coroutine.wrap(clickingLoop)()  -- Start the clicking loop if enabled
+    else
+        clickingEnabled = false  -- Ensure clicking is disabled if the toggle is off
+    end
 end)
 
--- Add toggle for executing loadstring (Tora)
-local ToggleTeleportation = Tabs.IceDimension:AddToggle("TeleportToggle", { Title = "Tora", Default = false }) -- Default set to false
+-- Add toggle for enabling/disabling player profile removal
+local ToggleRemoveProfile = Tabs.IceDimension:AddToggle("RemoveProfileToggle", { Title = "Remove Player Profile Doesn't work fully", Default = false })
+ToggleRemoveProfile:OnChanged(function()
+    removeProfileEnabled = ToggleRemoveProfile.Value
+    if removeProfileEnabled then
+        coroutine.wrap(removePlayerProfileApp)() -- Start removal if enabled
+    else
+        -- No need to do anything special when disabling
+    end
+end)
+
+-- Add toggle for enabling/disabling teleportation & folder scanning
+local ToggleTeleportation = Tabs.IceDimension:AddToggle("TeleportToggle", { Title = "Enable Teleportation", Default = false })
 ToggleTeleportation:OnChanged(function()
     teleportingEnabled = ToggleTeleportation.Value
-    print("Tora Enabled:", teleportingEnabled)
-    
-    -- Start or stop teleportation based on toggle state
     if teleportingEnabled then
-        print("Starting Tora script execution.")
-        while teleportingEnabled do
-            -- Execute the loadstring each loop iteration
-            executeToraScript()
+        isMinigameActive = true -- Set minigame active state
+        statusLabel.Text = "Teleportation: Enabled" -- Update status label
+        hasTeleported = false -- Reset teleportation flag before starting
+        coroutine.wrap(teleportToDecalParts)() -- Start teleportation
+
+        -- Start scanning for DecalParts
+        if not scanningActive then
+            coroutine.wrap(continuouslyFindDecalParts)() -- Start scanning for DecalParts
+            scanningActive = true
         end
+
+        -- Start updating the timer and labels
+        coroutine.wrap(updateTimerAndLabels)() -- Start updating the timer
     else
-        print("Tora has been fully disabled.")
+        isMinigameActive = false -- Reset state when teleportation is disabled
+        scanningActive = false -- Stop scanning
+        statusLabel.Text = "Teleportation: Disabled" -- Update status label
     end
 end)
 
@@ -156,19 +445,15 @@ local ClickSpeedSlider = Tabs.IceDimension:AddSlider("ClickSpeedSlider", {
     Max = 3,
     Rounding = 1,
     Callback = function(value)
-        clickDelay = value
-        print("Click Speed set to:", clickDelay)
-    end
+        clickDelay = value -- Set the click delay based on slider input
+    end,
 })
-
--- Start the clicking loop in a coroutine
-coroutine.wrap(clickingLoop)()
 
 -- Notify that the script has been loaded
 Fluent:Notify({
     Title = "Fluent",
     Content = "The script has been loaded.",
-    Duration = 5
+    Duration = 5,
 })
 
 -- Addons integration
@@ -185,3 +470,11 @@ Window:SelectTab(1)
 
 -- Load any auto-load configurations
 SaveManager:LoadAutoloadConfig()
+
+
+
+
+
+
+
+
