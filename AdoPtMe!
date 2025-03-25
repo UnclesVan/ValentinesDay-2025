@@ -121,7 +121,6 @@ local Workspace = game:GetService("Workspace")
 local clickingEnabled = false -- Set to false to disable clicking by default
 local removeProfileEnabled = false -- Set to false to disable profile removal by default
 local teleportingEnabled = false -- Set to false to disable teleportation by default
-local clickDelay = 0.1 -- Default click delay (in seconds)
 local decalPartName = "DecalPart"
 local decalParts = {}  -- Table to store found DecalParts
 local uiFrame, statusLabel, timerLabel, shardAmountLabel, timeInMinigameLabel -- UI elements
@@ -139,7 +138,7 @@ end
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
 
--- Function to simulate a screen click
+-- Function to simulate a screen click (center-focused randomization)
 local function clickScreen()
     local camera = Workspace.CurrentCamera
     if not camera then
@@ -149,14 +148,18 @@ local function clickScreen()
     local screenWidth = camera.ViewportSize.X
     local screenHeight = camera.ViewportSize.Y
 
-    local clickX = screenWidth / 2
-    local clickY = screenHeight / 2
+    local centerX = screenWidth / 2
+    local centerY = screenHeight / 2
 
-    if clickingEnabled then
-        VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
-        wait(0.1)
-        VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
-    end
+    local clickX = math.random(centerX - 50, centerX + 50)  -- Randomized click position around the center
+    local clickY = math.random(centerY - 50, centerY + 50)
+
+    print("Clicking screen at:", clickX, clickY)
+
+    -- Simulate a mouse press and release
+    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
+    wait(0.02)  -- Reduced delay for faster clicks
+    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
 end
 
 -- Function to find all DecalParts in models
@@ -207,7 +210,7 @@ end
 local function clickingLoop()
     while clickingEnabled do
         clickScreen()
-        wait(clickDelay) -- Fixed click delay
+        wait(0.05)  -- Adjust speed for more/less frequent clicks
     end
 end
 
@@ -282,66 +285,6 @@ local function createStatusUI()
     timeInMinigameLabel.Parent = uiFrame
 end
 
--- Function to update the timer and shard/time displays
-local function updateTimerAndLabels()
-    while teleportingEnabled and isMinigameActive do
-        -- Fetching Timer Value
-        local timerLabelFromGame = Workspace:FindFirstChild("Interiors")
-            and Workspace.Interiors:FindFirstChild("IceDimension")
-            and Workspace.Interiors.IceDimension:FindFirstChild("JoinZones")
-            and Workspace.Interiors.IceDimension.JoinZones:FindFirstChild("IceCubeHillMinigame")
-            and Workspace.Interiors.IceDimension.JoinZones.IceCubeHillMinigame:FindFirstChild("Billboard")
-            and Workspace.Interiors.IceDimension.JoinZones.IceCubeHillMinigame.Billboard:FindFirstChild("BillboardGui")
-            and Workspace.Interiors.IceDimension.JoinZones.IceCubeHillMinigame.Billboard.BillboardGui:FindFirstChild("TimerLabel")
-
-        if timerLabelFromGame and timerLabelFromGame:IsA("TextLabel") then
-            timerLabel.Text = "Timer: " .. (timerLabelFromGame.Text or "Not Available")
-
-            local timerValue = tonumber(timerLabelFromGame.Text)
-
-            -- Check timer value and reset to first stage if necessary
-            if timerValue and (timerValue <= 30 or timerValue <= 20) then
-                print("Timer is at", timerValue, "seconds. Resetting to the first stage.")
-                resetToFirstStage() -- Call reset function
-                hasTeleported = false -- Reset teleportation flag after a reset
-            end
-        else
-            timerLabel.Text = "Timer: Not Found." -- Fallback text
-            hasTeleported = false -- Reset if the timer is not found
-        end
-
-        -- Update Shard Amount
-        local shardLabel = player:FindFirstChild("PlayerGui"):FindFirstChild("MinigameInGameApp").Body.Right.Container.ValueLabel
-        if shardLabel and shardLabel:IsA("TextLabel") then
-            shardAmountLabel.Text = "Shards Amount: " .. (shardLabel.Text or "Not Available")
-        else
-            shardAmountLabel.Text = "Shards Amount: Not Available" -- Fallback text if not found
-        end
-
-        -- Update Time In Minigame
-        local timeLabel = player:FindFirstChild("PlayerGui"):FindFirstChild("MinigameInGameApp").Body.Left.Container.ValueLabel
-        if timeLabel and timeLabel:IsA("TextLabel") then
-            timeInMinigameLabel.Text = "Time In Minigame: " .. (timeLabel.Text or "Not Available")
-        else
-            timeInMinigameLabel.Text = "Time In Minigame: Not Available" -- Fallback text if not found
-        end
-
-        wait(1) -- Update every second
-    end
-end
-
--- New function to continuously remove PlayerProfileApp
-local function removePlayerProfileApp()
-    while removeProfileEnabled do
-        local playerProfileApp = player:FindFirstChild("PlayerProfileApp")
-        if playerProfileApp then
-            playerProfileApp:Destroy() -- Remove it if it's found
-            print("PlayerProfileApp removed.")
-        end
-        wait(2) -- Wait before checking again
-    end
-end
-
 -- Function to reset to the first stage
 local function resetToFirstStage()
     print("Resetting to the first stage...")
@@ -360,7 +303,18 @@ local function resetToFirstStage()
 
     -- Restart the scanning and timer updates
     coroutine.wrap(continuouslyFindDecalParts)()
-    coroutine.wrap(updateTimerAndLabels)() -- Update to use new function
+end
+
+-- New function to continuously remove PlayerProfileApp
+local function removePlayerProfileApp()
+    while removeProfileEnabled do
+        local playerProfileApp = player:FindFirstChild("PlayerProfileApp")
+        if playerProfileApp then
+            playerProfileApp:Destroy() -- Remove it if it's found
+            print("PlayerProfileApp removed.")
+        end
+        wait(2) -- Wait before checking again
+    end
 end
 
 -- Integration with Fluent UI
@@ -428,26 +382,12 @@ ToggleTeleportation:OnChanged(function()
             scanningActive = true
         end
 
-        -- Start updating the timer and labels
-        coroutine.wrap(updateTimerAndLabels)() -- Start updating the timer
     else
         isMinigameActive = false -- Reset state when teleportation is disabled
         scanningActive = false -- Stop scanning
         statusLabel.Text = "Teleportation: Disabled" -- Update status label
     end
 end)
-
--- Add a slider for adjusting click speed
-local ClickSpeedSlider = Tabs.IceDimension:AddSlider("ClickSpeedSlider", {
-    Title = "Click Speed (seconds)",
-    Default = 0.1,
-    Min = 0.1,
-    Max = 3,
-    Rounding = 1,
-    Callback = function(value)
-        clickDelay = value -- Set the click delay based on slider input
-    end,
-})
 
 -- Notify that the script has been loaded
 Fluent:Notify({
