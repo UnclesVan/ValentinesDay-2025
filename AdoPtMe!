@@ -1,3 +1,5 @@
+--loadstring(game:HttpGet("https://raw.githubusercontent.com/UnclesVan/ValentinesDay-2025/refs/heads/main/MinigameStatusTracker"))()
+
 -- Ensure this script is a LocalScript
 local Players = game:GetService("Players") -- Get players service
 local player = Players.LocalPlayer -- Get the LocalPlayer
