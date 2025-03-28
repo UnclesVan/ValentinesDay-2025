@@ -6,7 +6,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local minigameApp = PlayerGui:WaitForChild("MinigameInGameApp", 5)
 
 -- Wait for the Timer and Shards labels
-local minigameTimerLabel = minigameApp.Body.Left.Container:WaitForChild("ValueLabel", 5) -- Timer Label
+local minigameTimerLabel = minigameApp.Body.Left.Container:WaitForChild("ValueLabel", 5) -- In Game Timer Label
 local minigameShardsLabel = minigameApp.Body.Right.Container:WaitForChild("ValueLabel", 5) -- Shards Label
 
 -- Create a new ScreenGui
@@ -30,14 +30,14 @@ end
 
 -- Create a Title label for displaying the Minigame Status
 local titleLabel = createLabel("Minigame Status", UDim2.new(0, 50, 0, 10), UDim2.new(0, 400, 0, 70))
+titleLabel.BackgroundColor3 = Color3.fromRGB(0, 100, 200) -- Change background color for the title
 titleLabel.BackgroundTransparency = 0.5 -- Slightly transparent background
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
-titleLabel.TextScaled = true
 
 -- Create TextLabels for displaying minigame status
 local statusLabel = createLabel("Minigame Ingame: false", UDim2.new(0, 50, 0, 90), UDim2.new(0, 400, 0, 70))
 local collectedLabel = createLabel("Collected Shards In Minigame: 0", UDim2.new(0, 50, 0, 170), UDim2.new(0, 400, 0, 70)) -- Updated Label
 local timerLabel = createLabel("Timer: 0", UDim2.new(0, 50, 0, 250), UDim2.new(0, 400, 0, 70))
+local circleTimerLabel = createLabel("Circle Timer: 0", UDim2.new(0, 50, 0, 330), UDim2.new(0, 400, 0, 70)) -- New Circle Timer Label
 
 -- Function to update effects based on in-game status
 local function updateMinigameStatus()
@@ -60,6 +60,10 @@ local function updateMinigameStatus()
 
         -- Update Timer display
         timerLabel.Text = "Timer: " .. currentTimerValue
+
+        -- Update Circle Timer display
+        local circleTimerValue = workspace:WaitForChild("Interiors"):WaitForChild("IceDimension"):WaitForChild("JoinZones"):WaitForChild("IceCubeHillMinigame"):WaitForChild("Billboard"):WaitForChild("BillboardGui"):WaitForChild("TimerLabel")
+        circleTimerLabel.Text = "Circle Timer: " .. (circleTimerValue and circleTimerValue.Text or "0")
 
         wait(1) -- Check for changes every second
     end
