@@ -1,0 +1,69 @@
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Wait for the necessary UI components to be available
+local minigameApp = PlayerGui:WaitForChild("MinigameInGameApp", 5)
+
+-- Wait for the Timer and Shards labels
+local minigameTimerLabel = minigameApp.Body.Left.Container:WaitForChild("ValueLabel", 5) -- Timer Label
+local minigameShardsLabel = minigameApp.Body.Right.Container:WaitForChild("ValueLabel", 5) -- Shards Label
+
+-- Create a new ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MinigameStatusTracker"
+screenGui.Parent = PlayerGui 
+
+-- Function to create a styled TextLabel
+local function createLabel(text, position, size)
+    local label = Instance.new("TextLabel")
+    label.Size = size
+    label.Position = position
+    label.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- Dark background for contrast
+    label.BackgroundTransparency = 0.7
+    label.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
+    label.TextScaled = true
+    label.Text = text
+    label.Parent = screenGui 
+    return label
+end
+
+-- Create a Title label for displaying the Minigame Status
+local titleLabel = createLabel("Minigame Status", UDim2.new(0, 50, 0, 10), UDim2.new(0, 400, 0, 70))
+titleLabel.BackgroundTransparency = 0.5 -- Slightly transparent background
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- White text
+titleLabel.TextScaled = true
+
+-- Create TextLabels for displaying minigame status
+local statusLabel = createLabel("Minigame Ingame: false", UDim2.new(0, 50, 0, 90), UDim2.new(0, 400, 0, 70))
+local collectedLabel = createLabel("Collected Shards In Minigame: 0", UDim2.new(0, 50, 0, 170), UDim2.new(0, 400, 0, 70)) -- Updated Label
+local timerLabel = createLabel("Timer: 0", UDim2.new(0, 50, 0, 250), UDim2.new(0, 400, 0, 70))
+
+-- Function to update effects based on in-game status
+local function updateMinigameStatus()
+    local previousTimerValue = ""
+    while true do
+        local currentTimerValue = minigameTimerLabel and minigameTimerLabel.Text or "0"
+
+        -- Update Minigame Ingame status
+        if currentTimerValue ~= previousTimerValue and currentTimerValue ~= "0" then
+            statusLabel.Text = "Minigame Ingame: true"
+        else
+            statusLabel.Text = "Minigame Ingame: false"
+        end
+
+        previousTimerValue = currentTimerValue
+
+        -- Update the collected shards display
+        local currentShardValue = minigameShardsLabel and minigameShardsLabel.Text or "0"
+        collectedLabel.Text = "Collected Shards In Minigame: " .. currentShardValue
+
+        -- Update Timer display
+        timerLabel.Text = "Timer: " .. currentTimerValue
+
+        wait(1) -- Check for changes every second
+    end
+end
+
+-- Start updating the UI labels
+updateMinigameStatus()
