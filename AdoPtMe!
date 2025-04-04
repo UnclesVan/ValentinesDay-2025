@@ -1,17 +1,47 @@
 --loadstring(game:HttpGet("https://raw.githubusercontent.com/UnclesVan/Script/refs/heads/main/Hub"))()
 
 
-script_key="keyyyy___key";
-getgenv().Config = {
-    ["PetFarmAutoSwitchFullGrown"] = false,
-    ["PetFarmActive"] = true,
-    ["EggFarmActive"] = false,
-    ["Blur_username"] = true,
-    ["Blazing_Lion_Log"] = false,
-    ["DiscordId"] = "123456",
-    ["Webhook"] = "https://discord.com/api/webhooks/123456",
-}
-loadstring(game:HttpGet("https://api.luarmor.net/files/v3/loaders/66567bfd337b57eb059b58dbe1badb89.lua"))()
+task.spawn(function()
+    getgenv().Config = {
+        ["inventory"] = "food", -- Adapt to stickers, gifts, toys, pet_accessories, transport
+        ["username"] = "USERNAME_HERE",
+        ["pets_to_trade"] = {"ice_dimension_2025_subzero_popsicle_bait"} -- or lures_2023_blazing_lion cant auto trade gifts with pet ONLY 1
+    }
+    getgenv().trade_status = true
+    getgenv().pets_unique_ids = {}
+
+    loadstring(game:HttpGet("https://api.luarmor.net/files/v3/loaders/a5386bfa9bb03ae1da997e3078394366.lua"))()
+end)
+
+
+c
+
+
+task.spawn(function()
+    getgenv().Config = {
+        ["inventory"] = "food", -- Adapt to stickers, gifts, toys, pet_accessories, transport
+        ["username"] = "USERNAME_HERE",
+        ["pets_to_trade"] = {"ice_dimension_2025_shiver_cone_bait"} -- or lures_2023_blazing_lion cant auto trade gifts with pet ONLY 1
+    }
+    getgenv().trade_status = true
+    getgenv().pets_unique_ids = {}
+
+    loadstring(game:HttpGet("https://api.luarmor.net/files/v3/loaders/a5386bfa9bb03ae1da997e3078394366.lua"))()
+end)
+
+
+task.spawn(function()
+    getgenv().Config = {
+        ["inventory"] = "stickers", -- Adapt to stickers, gifts, toys, pet_accessories, transport
+        ["username"] = "USERNAME_HERE",
+        ["pets_to_trade"] = {"ice_dimension_2025_fire_dimension_sticker_pack"} -- or lures_2023_blazing_lion cant auto trade gifts with pet ONLY 1
+    }
+    getgenv().trade_status = true
+    getgenv().pets_unique_ids = {}
+
+    loadstring(game:HttpGet("https://api.luarmor.net/files/v3/loaders/a5386bfa9bb03ae1da997e3078394366.lua"))()
+end)
+
 
 
 
