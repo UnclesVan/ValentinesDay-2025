@@ -161,307 +161,162 @@ print("Anti AFK has been enabled.")
 
 
 
--- Load services
-local Players = game:GetService("Players")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local Workspace = game:GetService("Workspace")
 
--- Control Variables
-local clickingEnabled = false -- Set to false to disable clicking by default
-local removeProfileEnabled = false -- Set to false to disable profile removal by default
-local teleportingEnabled = false -- Set to false to disable teleportation by default
-local decalPartName = "DecalPart"
-local decalParts = {}  -- Table to store found DecalParts
-local uiFrame, statusLabel, timerLabel, shardAmountLabel, timeInMinigameLabel -- UI elements
-local isMinigameActive = false -- Tracks if the minigame is active
-local scanningActive = false -- Tracks if folder scanning is active
-local hasTeleported = false -- Track if a teleportation has occurred
 
--- Check if the script is running in a LocalScript context
-local player = Players.LocalPlayer
-if not player then
-    warn("This script must be run in a LocalScript.")
-    return
-end
 
+local player = game.Players.LocalPlayer  -- Use this in a LocalScript
 local character = player.Character or player.CharacterAdded:Wait()
-local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")  -- Ensure the HumanoidRootPart is defined
+local playerGui = player:WaitForChild("PlayerGui")  -- Reference to PlayerGui
 
--- Function to simulate a screen click (center-focused randomization)
-local function clickScreen()
-    local camera = Workspace.CurrentCamera
-    if not camera then
-        return
+-- Function to convert timer from the UI string to a number
+local function getTimeRemaining()
+    local timerLabel = playerGui:FindFirstChild("MinigameInGameApp")
+        and playerGui.MinigameInGameApp:FindFirstChild("Body")
+        and playerGui.MinigameInGameApp.Body:FindFirstChild("Left")
+        and playerGui.MinigameInGameApp.Body.Left:FindFirstChild("Container")
+        and playerGui.MinigameInGameApp.Body.Left.Container:FindFirstChild("ValueLabel")
+
+    if timerLabel and tonumber(timerLabel.Text) then
+        return tonumber(timerLabel.Text)  -- Return the number of seconds
+    end
+    return nil  -- Return nil if ValueLabel is not found or not a number
+end
+
+local hasTeleportedToJoinZone = false  -- Flag to track if we have teleported
+
+while true do
+    -- Check if there are any children under workspace.Interiors
+    local interiors = workspace:FindFirstChild("Interiors")
+    if not interiors or #interiors:GetChildren() == 0 then
+        print("No items found in workspace.Interiors! Stopping all teleportation.")
+        wait(1)  -- Delay before the next scan attempt
+        continue -- Restart the loop to keep scanning
     end
 
-    local screenWidth = camera.ViewportSize.X
-    local screenHeight = camera.ViewportSize.Y
+    -- Check if we need to teleport to the JoinZone
+    if not hasTeleportedToJoinZone then
+        local joinZone = workspace.Interiors:FindFirstChild("MainMap!Default"):FindFirstChild("BlossomShakedownJoinZone"):FindFirstChild("Ring")
 
-    local centerX = screenWidth / 2
-    local centerY = screenHeight / 2
-
-    local clickX = math.random(centerX - 50, centerX + 50)  -- Randomized click position around the center
-    local clickY = math.random(centerY - 50, centerY + 50)
-
-    print("Clicking screen at:", clickX, clickY)
-
-    -- Simulate a mouse press and release
-    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 0)
-    wait(0.02)  -- Reduced delay for faster clicks
-    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 0)
-end
-
--- Function to find all DecalParts in models
-local function findDecalPartsInModel(model)
-    for _, child in ipairs(model:GetChildren()) do
-        if child:IsA("Model") then
-            findDecalPartsInModel(child)
-        elseif child.Name == decalPartName and child:IsA("MeshPart") then
-            table.insert(decalParts, child)
-        end
-    end
-end
-
--- Function to find all DecalParts
-local function findDecalParts(iceCubeHillMinigameFolder)
-    decalParts = {} -- Clear existing parts to allow re-finding
-    findDecalPartsInModel(iceCubeHillMinigameFolder)
-    print("Total DecalParts Found: " .. #decalParts)
-end
-
--- Function to get the IceCubeHillMinigame folder
-local function getIceCubeHillMinigameFolder()
-    local interiorsFolder = Workspace:FindFirstChild("Interiors")
-    if interiorsFolder then
-        local iceCubeHillMinigameFolder = interiorsFolder:FindFirstChild("IceCubeHillMinigame")
-        if iceCubeHillMinigameFolder then
-            return iceCubeHillMinigameFolder
-        end
-    end
-    return nil
-end
-
--- Function to continuously scan for DecalParts
-local function continuouslyFindDecalParts()
-    scanningActive = true
-    while scanningActive do
-        local iceCubeHillMinigameFolder = getIceCubeHillMinigameFolder()
-        if iceCubeHillMinigameFolder then
-            findDecalParts(iceCubeHillMinigameFolder)
+        if joinZone then
+            -- Teleport to the JoinZone location once
+            humanoidRootPart.CFrame = joinZone.CFrame
+            print("Teleported to Ring at BlossomShakedownJoinZone.")
+            hasTeleportedToJoinZone = true  -- Set the flag to true to prevent further teleportation
+            wait(1)  -- Optional: Wait a moment after teleporting 
         else
-            print("IceCubeHillMinigame folder not found. Checking again in 5 seconds...")
+            print("Destination Ring not found in BlossomShakedownJoinZone!")
         end
-        wait(5) -- Check every 5 seconds for updates in the folder
     end
-end
 
--- Coroutine for clicking loop
-local function clickingLoop()
-    while clickingEnabled do
-        clickScreen()
-        wait(0.05)  -- Adjust speed for more/less frequent clicks
-    end
-end
+    print("Scanning for: Interiors.BlossomShakedownInterior")
 
--- Coroutine for teleportation to DecalParts
-local function teleportToDecalParts()
-    while teleportingEnabled do
-        if #decalParts > 0 then  -- Check if there are decal parts
-            for i = 1, math.min(4, #decalParts) do
-                local decalPart = decalParts[i]
-                if decalPart then
-                    humanoidRootPart.CFrame = decalPart.CFrame * CFrame.new(0, 5, 0)
-                    wait(1) -- Wait before clicking
-                    clickScreen() -- Click after teleporting
-                    hasTeleported = true  -- Set flag indicating a teleportation has occurred
-                    wait(0.5) -- Wait before teleporting again
+    -- Attempt to find the BlossomShakedownInterior model
+    local blossomShakedownInterior = interiors:FindFirstChild("BlossomShakedownInterior")
+
+    if blossomShakedownInterior then
+        print("BlossomShakedownInterior model found.")
+
+        -- Search for the paraglider
+        print("Searching for: Interiors.BlossomShakedownInterior.GliderInteractions > spring_2025_default_paraglider")
+        local paraglider = blossomShakedownInterior.GliderInteractions:FindFirstChild("spring_2025_default_paraglider")
+        local collisionPart = paraglider and paraglider:FindFirstChild("Collision")
+
+        if collisionPart then
+            -- Teleport to the Collision part's position
+            humanoidRootPart.CFrame = collisionPart.CFrame
+            print("Teleported to Collision part of Paraglider:", collisionPart.Name)
+            wait(7)  -- Wait for 7 seconds at this position
+        else
+            print("Collision part of Paraglider not found!")
+        end
+
+        local foundPetal = false  -- Flag to check if a Petal was found
+
+        -- Iterate through all models in the Rings
+        local rings = blossomShakedownInterior:FindFirstChild("Rings")
+        if rings then
+            for _, ringModel in ipairs(rings:GetChildren()) do
+                if ringModel:IsA("Model") then
+                    print("Checking ring model:", ringModel.Name)
+
+                    for _, nestedModel in ipairs(ringModel:GetChildren()) do
+                        if nestedModel:IsA("Model") then
+                            local petal = nestedModel:FindFirstChild("Petal")
+                            if petal and petal:IsA("MeshPart") then
+                                foundPetal = true
+                                humanoidRootPart.CFrame = petal.CFrame
+                                print("Teleporting to Petal:", petal.Name)
+                                wait(0.5)  -- Wait briefly to allow for the teleportation
+                            end
+                        end
+                    end
                 end
             end
+
+            if not foundPetal then
+                print("No Petals found.")
+            end
+
+            -- Teleport to Ring Spawns if they exist
+            print("Teleporting to Ring Spawns...")
+            local foundRingSpawn = false
+            local ringSpawns = blossomShakedownInterior:FindFirstChild("RingSpawns")
+            if ringSpawns then
+                for _, ringSpawn in ipairs(ringSpawns:GetChildren()) do
+                    if ringSpawn:IsA("Part") then
+                        foundRingSpawn = true
+                        humanoidRootPart.CFrame = ringSpawn.CFrame  -- Teleport to the Ring Spawn's position
+                        print("Teleporting to Ring Spawn:", ringSpawn.Name)
+                        wait(0.5)  -- Adjust the wait time for controlled teleport speed
+                    end
+                end
+            else
+                print("No Ring Spawns found.")
+            end
+        else
+            print("Rings model not found!")
         end
-        wait(2) -- Wait before the next round of teleportation
-    end
-end
-
--- Create a status UI
-local function createStatusUI()
-    local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-
-    uiFrame = Instance.new("Frame")
-    uiFrame.Size = UDim2.new(0.3, 0, 0.2, 0) -- Increased height for additional labels
-    uiFrame.Position = UDim2.new(0.35, 0, 0.05, 0)
-    uiFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- Dark background
-    uiFrame.BorderSizePixel = 0
-    uiFrame.Parent = screenGui
-
-    -- Status Label
-    statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(1, 0, 0.25, 0) -- Changed height to fit
-    statusLabel.Position = UDim2.new(0, 0, 0, 0)
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = "Teleportation: Disabled"
-    statusLabel.TextColor3 = Color3.new(1, 1, 1) -- White text
-    statusLabel.TextScaled = true
-    statusLabel.Parent = uiFrame
-
-    -- Timer Label
-    timerLabel = Instance.new("TextLabel")
-    timerLabel.Size = UDim2.new(1, 0, 0.25, 0) -- Changed height to fit
-    timerLabel.Position = UDim2.new(0, 0, 0.25, 0)
-    timerLabel.BackgroundColor3 = Color3.new(0, 0, 0) -- Black background
-    timerLabel.TextColor3 = Color3.new(1, 1, 1) -- White text
-    timerLabel.TextScaled = true
-    timerLabel.Text = "Timer: Not Available"
-    timerLabel.Parent = uiFrame
-
-    -- Shard Amount Label
-    shardAmountLabel = Instance.new("TextLabel")
-    shardAmountLabel.Size = UDim2.new(1, 0, 0.25, 0) -- Height for additional label
-    shardAmountLabel.Position = UDim2.new(0, 0, 0.5, 0) -- Position below Timer Label
-    shardAmountLabel.BackgroundTransparency = 1
-    shardAmountLabel.TextColor3 = Color3.new(1, 1, 1) -- White text
-    shardAmountLabel.TextScaled = true
-    shardAmountLabel.Text = "Shards Amount: Not Available"
-    shardAmountLabel.Parent = uiFrame
-
-    -- Time In Minigame Label
-    timeInMinigameLabel = Instance.new("TextLabel")
-    timeInMinigameLabel.Size = UDim2.new(1, 0, 0.25, 0) -- Height for additional label
-    timeInMinigameLabel.Position = UDim2.new(0, 0, 0.75, 0) -- Position below Shards Amount Label
-    timeInMinigameLabel.BackgroundTransparency = 1
-    timeInMinigameLabel.TextColor3 = Color3.new(1, 1, 1) -- White text
-    timeInMinigameLabel.TextScaled = true
-    timeInMinigameLabel.Text = "Time In Minigame: Not Available"
-    timeInMinigameLabel.Parent = uiFrame
-end
-
--- Function to reset to the first stage
-local function resetToFirstStage()
-    print("Resetting to the first stage...")
-
-    -- Attempt to find the necessary folders again
-    local iceCubeHillMinigameFolder = getIceCubeHillMinigameFolder()
-    if not iceCubeHillMinigameFolder then
-        print("Join zone not found. Cannot reset minigame.")
-        return
-    end
-
-    -- Optional: Reset player position
-    if character and character:FindFirstChild("HumanoidRootPart") then
-        humanoidRootPart.CFrame = CFrame.new(0, 5, 0) -- Reset position
-    end
-
-    -- Restart the scanning and timer updates
-    coroutine.wrap(continuouslyFindDecalParts)()
-end
-
--- New function to continuously remove PlayerProfileApp
-local function removePlayerProfileApp()
-    while removeProfileEnabled do
-        local playerProfileApp = player:FindFirstChild("PlayerProfileApp")
-        if playerProfileApp then
-            playerProfileApp:Destroy() -- Remove it if it's found
-            print("PlayerProfileApp removed.")
-        end
-        wait(2) -- Wait before checking again
-    end
-end
-
--- Integration with Fluent UI
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
-
-local Window = Fluent:CreateWindow({
-    Title = "Fluent " .. Fluent.Version,
-    SubTitle = "by dawid",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-})
-
-local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "" }),
-    IceDimension = Window:AddTab({ Title = "IceDimension", Icon = "snowflake" }),
-}
-
--- Create the status UI at the start
-createStatusUI()
-
--- Create initial states for the values
-removeProfileEnabled = false
-isMinigameActive = false
-
--- Add toggle for enabling/disabling clicking
-local ToggleClicking = Tabs.IceDimension:AddToggle("ClickToggle", { Title = "Enable Clicking", Default = false })
-ToggleClicking:OnChanged(function()
-    clickingEnabled = ToggleClicking.Value
-    if clickingEnabled then
-        coroutine.wrap(clickingLoop)()  -- Start the clicking loop if enabled
     else
-        clickingEnabled = false  -- Ensure clicking is disabled if the toggle is off
+        print("BlossomShakedownInterior model not found! Continuing to scan...")
+        wait(1)  -- Delay before retrying the scan
+        continue  -- Restart the loop to keep scanning
     end
-end)
 
--- Add toggle for enabling/disabling player profile removal
-local ToggleRemoveProfile = Tabs.IceDimension:AddToggle("RemoveProfileToggle", { Title = "Remove Player Profile Doesn't work fully", Default = false })
-ToggleRemoveProfile:OnChanged(function()
-    removeProfileEnabled = ToggleRemoveProfile.Value
-    if removeProfileEnabled then
-        coroutine.wrap(removePlayerProfileApp)() -- Start removal if enabled
+    -- Updraft Button Check using the provided path
+    print("Searching for: Updraft Button")
+    local updraftButton = playerGui:FindFirstChild("MinigameHotbarApp")
+        and playerGui.MinigameHotbarApp:FindFirstChild("Hotbar")
+        and playerGui.MinigameHotbarApp.Hotbar:FindFirstChild("UpdraftButton")
+        and playerGui.MinigameHotbarApp.Hotbar.UpdraftButton:FindFirstChild("Button")
+
+    if updraftButton then
+        pcall(function()
+            for _, connection in pairs(getconnections(updraftButton.MouseButton1Down)) do
+                connection:Fire()
+            end
+            for _, connection in pairs(getconnections(updraftButton.MouseButton1Click)) do
+                connection:Fire()
+            end
+            for _, connection in pairs(getconnections(updraftButton.MouseButton1Up)) do
+                connection:Fire()
+            end
+        end)
+        print("Updraft Button activated.")
     else
-        -- No need to do anything special when disabling
+        print("Updraft Button not found in PlayerGui!")
     end
-end)
 
--- Add toggle for enabling/disabling teleportation & folder scanning
-local ToggleTeleportation = Tabs.IceDimension:AddToggle("TeleportToggle", { Title = "Enable Teleportation", Default = false })
-ToggleTeleportation:OnChanged(function()
-    teleportingEnabled = ToggleTeleportation.Value
-    if teleportingEnabled then
-        isMinigameActive = true -- Set minigame active state
-        statusLabel.Text = "Teleportation: Enabled" -- Update status label
-        hasTeleported = false -- Reset teleportation flag before starting
-        coroutine.wrap(teleportToDecalParts)() -- Start teleportation
-
-        -- Start scanning for DecalParts
-        if not scanningActive then
-            coroutine.wrap(continuouslyFindDecalParts)() -- Start scanning for DecalParts
-            scanningActive = true
-        end
-
-    else
-        isMinigameActive = false -- Reset state when teleportation is disabled
-        scanningActive = false -- Stop scanning
-        statusLabel.Text = "Teleportation: Disabled" -- Update status label
+    -- Check timer; reset loop if more than 30 seconds have passed
+    local timeRemaining = getTimeRemaining()
+    if timeRemaining and timeRemaining <= 30 then
+        print("30 seconds reached. Resetting loop to scan again.")
+        wait(1)  -- Optional: Delay before scanning again
+        -- The loop will automatically restart without exiting
     end
-end)
 
--- Notify that the script has been loaded
-Fluent:Notify({
-    Title = "Fluent",
-    Content = "The script has been loaded.",
-    Duration = 5,
-})
-
--- Addons integration
-SaveManager:SetLibrary(Fluent)
-InterfaceManager:SetLibrary(Fluent)
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({})
-InterfaceManager:SetFolder("FluentScriptHub")
-SaveManager:SetFolder("FluentScriptHub/specific-game")
-InterfaceManager:BuildInterfaceSection(Tabs.Main)
-SaveManager:BuildConfigSection(Tabs.Main)
-
-Window:SelectTab(1)
-
--- Load any auto-load configurations
-SaveManager:LoadAutoloadConfig()
-
-
-
+    wait(1)  -- Pause before scanning again
+end
 
 
 
