@@ -1,6 +1,68 @@
 --https://raw.githubusercontent.com/UnclesVan/ValentinesDay-2025/refs/heads/main/CapsuleFarm
 
 
+--loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoptMeHalloWeenUis/refs/heads/main/CandyUiLoader.lua')))()
+
+--
+
+
+-- Services
+local player = game:GetService("Players").LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Fire all connections of a button's event
+local function fireConnections(event)
+    for _, connection in pairs(getconnections(event)) do
+        connection:Fire()
+    end
+end
+
+-- Simulate a click on a button
+local function simulateClick(button)
+    if button then
+        fireConnections(button.MouseButton1Down)
+        wait(0.1)
+        fireConnections(button.MouseButton1Click)
+        wait(0.1)
+        fireConnections(button.MouseButton1Up)
+        print("Clicked:", button.Name)
+    else
+        warn("Invalid button!")
+    end
+end
+
+-- Click both buttons in a loop
+local function clickMinigameButtons()
+    local success, err = pcall(function()
+        local newsBtn = playerGui:WaitForChild("MinigameNewsPaperApp"):WaitForChild("Body"):WaitForChild("Button")
+        local rewardsBtn = playerGui:WaitForChild("MinigameRewardsApp"):WaitForChild("Body"):WaitForChild("Button")
+
+        while true do
+            simulateClick(newsBtn)
+            wait(1)
+            simulateClick(rewardsBtn)
+            wait(1)
+        end
+    end)
+
+    if not success then
+        warn("Error clicking minigame buttons:", err)
+    end
+end
+
+clickMinigameButtons()
+
+
+
+
+
+
+
+
+
+
+
+
 
 -- Ensure this script is a LocalScript
 local Players = game:GetService("Players") -- Get players service
