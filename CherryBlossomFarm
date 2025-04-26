@@ -1,0 +1,296 @@
+-- Ensure this script is a LocalScript
+local Players = game:GetService("Players") -- Get players service
+local player = Players.LocalPlayer -- Get the LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui") -- Wait for the PlayerGui to exist
+local hintApp = playerGui:WaitForChild("HintApp") -- Ensure HintApp exists in the PlayerGui
+local largeTextLabel = hintApp:WaitForChild("LargeTextLabel") -- Ensure LargeTextLabel exists in HintApp
+
+-- Function to display dehashed message
+local function displayDehashedMessage()
+    largeTextLabel.Text = "" -- Set the message text
+    largeTextLabel.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
+    wait(3) -- Wait for 3 seconds
+    largeTextLabel.Text = "" -- Clear the message text
+    largeTextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
+end
+
+-- Call the function to display the message
+displayDehashedMessage()
+
+
+-- Client-side script (LocalScript in StarterGui or a ScreenGui within PlayerGui)
+
+-- GUI Elements (created dynamically)
+local Player = game.Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+-- Create GUI Elements
+local ba = Instance.new("ScreenGui")
+local ca = Instance.new("TextLabel") -- Main Label
+local ab = Instance.new("TextLabel") -- Status Label
+local afkTimerLabel = Instance.new("TextLabel") -- Timer label
+
+-- Properties
+ba.Name = "ba"
+ba.Parent = PlayerGui
+ba.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Setup main label properties
+ca.Name = "ca"
+ca.Parent = ba
+ca.Active = true
+ca.BackgroundTransparency = 1
+ca.Position = UDim2.new(0.01, 0, 0.01, 0)
+ca.Size = UDim2.new(0, 500, 0, 120)
+ca.Font = Enum.Font.SourceSansSemibold
+ca.Text = "Anti AFK Script"
+ca.TextColor3 = Color3.new(0, 1, 0)
+ca.TextSize = 64
+ca.TextStrokeTransparency = 0
+ca.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+ca.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Setup status label properties
+ab.Name = "ab"
+ab.Parent = ba
+ab.BackgroundTransparency = 1
+ab.Position = UDim2.new(0.01, 0, 0.2, 0)
+ab.Size = UDim2.new(0, 500, 0, 120)
+ab.Font = Enum.Font.ArialBold
+ab.Text = "Status: Active"
+ab.TextColor3 = Color3.new(0, 1, 0)
+ab.TextStrokeTransparency = 0
+ab.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+ab.TextSize = 64
+ab.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Setup AFK timer label properties
+afkTimerLabel.Name = "afkTimerLabel"
+afkTimerLabel.Parent = ba
+afkTimerLabel.BackgroundTransparency = 1
+afkTimerLabel.Position = UDim2.new(0.01, 0, 0.39, 0)
+afkTimerLabel.Size = UDim2.new(0, 500, 0, 120)
+afkTimerLabel.Font = Enum.Font.Arial
+afkTimerLabel.Text = "Total Time: 0s"
+afkTimerLabel.TextColor3 = Color3.new(0, 1, 0)
+afkTimerLabel.TextSize = 64
+afkTimerLabel.TextStrokeTransparency = 0
+afkTimerLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+afkTimerLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Anti-AFK Logic: Uses VirtualUser to simulate input
+local VirtualUser = game:GetService("VirtualUser")
+local afkTimer = 0
+
+-- Function to update the AFK timer
+local function updateAfkTimer()
+    while true do
+        task.wait(1)
+        afkTimer = afkTimer + 1
+        afkTimerLabel.Text = "Total Time: " .. afkTimer .. "s"
+    end
+end
+
+-- Start the timer loop in a coroutine
+coroutine.wrap(updateAfkTimer)()
+
+-- Function to handle when the player becomes idle
+local function onIdled()
+    -- Simulate clicking the second mouse button (right-click)
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+
+    ab.Text = "Roblox tried to kick you but I kicked him instead"
+    task.wait(2)
+    ab.Text = "Status: Active"
+end
+
+-- Connect the Idled event to the anti-AFK function
+Player.Idled:Connect(onIdled)
+
+print("Anti AFK has been enabled.")
+
+
+
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Create a ScreenGui and TextLabels for displaying the timer and score
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "TimerDisplay"
+screenGui.Parent = playerGui
+
+local timerLabel = Instance.new("TextLabel")
+timerLabel.Name = "TimerLabel"
+timerLabel.Size = UDim2.new(0, 200, 0, 50)  -- Set size of the label
+timerLabel.Position = UDim2.new(0.5, -100, 0, 0)  -- Position it on the screen
+timerLabel.BackgroundColor3 = Color3.new(0, 0, 0)  -- Black background
+timerLabel.TextColor3 = Color3.new(1, 1, 1)  -- White text
+timerLabel.TextScaled = true  -- Scale text to fit the label
+timerLabel.Parent = screenGui
+
+local valueDisplayLabel = Instance.new("TextLabel")
+valueDisplayLabel.Name = "ValueDisplayLabel"
+valueDisplayLabel.Size = UDim2.new(0, 200, 0, 50)  -- Set size of the value label
+valueDisplayLabel.Position = UDim2.new(0.5, -100, 0.1, 0)  -- Position it below the timer label
+valueDisplayLabel.BackgroundColor3 = Color3.new(0, 0, 0)  -- Black background
+valueDisplayLabel.TextColor3 = Color3.new(1, 1, 1)  -- White text
+valueDisplayLabel.TextScaled = true  -- Scale text to fit the label
+valueDisplayLabel.Parent = screenGui
+
+local teleportationStopped = false  -- Flag to track if teleportation is stopped
+
+-- Function to get the timer text from the associated path
+local function getTimerText()
+    local minigameGui = playerGui:FindFirstChild("MinigameInGameApp")
+
+    if minigameGui then
+        local timerLabelValue = minigameGui:FindFirstChild("Body")
+            and minigameGui.Body:FindFirstChild("Left")
+            and minigameGui.Body.Left:FindFirstChild("Container")
+            and minigameGui.Body.Left.Container:FindFirstChild("ValueLabel")
+
+        if timerLabelValue then
+            return timerLabelValue.Text  -- Return the text from the UI
+        end
+    end
+    return "Timer: 0:00"  -- Default if not found
+end
+
+-- Function to get the timer value in seconds for logic checks
+local function getTimerValueInSeconds()
+    local timerText = getTimerText()
+
+    local minutes, seconds = timerText:match("(%d+):(%d+)")
+    if minutes and seconds then
+        return tonumber(minutes) * 60 + tonumber(seconds)  -- Convert to total seconds
+    end
+    return 0  -- Default value if parsing fails
+end
+
+-- Function to get player's score
+local function getPlayerScore()
+    local minigameGui = playerGui:FindFirstChild("MinigameInGameApp")
+
+    if minigameGui then
+        local scoreLabel = minigameGui:FindFirstChild("Body")
+            and minigameGui.Body:FindFirstChild("Right")
+            and minigameGui.Body.Right:FindFirstChild("Container")
+            and minigameGui.Body.Right.Container:FindFirstChild("ValueLabel")
+
+        if scoreLabel and tonumber(scoreLabel.Text) then
+            return tonumber(scoreLabel.Text)
+        end
+    end 
+    return nil 
+end
+
+-- Function to update the ValueDisplayLabel with the player's score
+local function updateValueDisplay()
+    local scoreLabel = getPlayerScore()
+    if scoreLabel then
+        valueDisplayLabel.Text = "Score: " .. scoreLabel  -- Update the score display
+    else
+        valueDisplayLabel.Text = "Score: N/A"  -- If not found, show N/A
+        warn("ScoreLabel not found!")
+    end
+end
+
+-- Wait for MinigameInGameApp to be available
+local function waitForMinigameGui()
+    while not playerGui:FindFirstChild("MinigameInGameApp") do
+        wait(1)  -- Wait until the GUI is available
+    end
+end
+
+waitForMinigameGui()  -- Start waiting for the minigame GUI
+
+-- Function to recursively find MeshParts named "Petal" in all models under Rings
+local function findPetalsInRings(parent)
+    local petals = {}
+    
+    for _, child in ipairs(parent:GetChildren()) do
+        if child:IsA("Model") then
+            -- Recursively search within models
+            local modelPetals = findPetalsInRings(child)
+            for _, petal in ipairs(modelPetals) do
+                table.insert(petals, petal)
+            end
+        elseif child:IsA("MeshPart") and child.Name == "Petal" then
+            -- Add the MeshPart if its name is "Petal"
+            table.insert(petals, child)
+        end
+    end
+    
+    return petals
+end
+
+-- Function to teleport to MeshParts named "Petal" within nested models in Rings only
+local function teleportToRings()
+    local rings = workspace:FindFirstChild("Interiors")
+        and workspace.Interiors:FindFirstChild("BlossomShakedownInterior")
+        and workspace.Interiors.BlossomShakedownInterior:FindFirstChild("Rings")
+
+    local hasTeleported = false
+
+    if rings then
+        local petals = findPetalsInRings(rings)  -- Find all "Petal" MeshParts within the nested structures
+
+        for _, petal in ipairs(petals) do
+            if humanoidRootPart then
+                humanoidRootPart.CFrame = petal.CFrame
+                print("Teleported to Petal in Rings:", petal.Name)
+                hasTeleported = true
+                wait(1)  -- Delay before allowing the next teleportation
+                return  -- Exit after teleporting to the first found "Petal" MeshPart
+            end
+        end
+    else
+        print("Rings does not exist.")
+    end
+
+    if not hasTeleported then
+        print("No Petal MeshParts found in Rings to teleport to.")
+    end
+end
+
+-- Main loop
+while true do
+    -- Update timer text and display it
+    timerLabel.Text = getTimerText() 
+    -- Continuously update the value display label
+    updateValueDisplay()
+
+    -- Get the timer value in seconds for logic checks
+    local timerValue = getTimerValueInSeconds()
+
+    -- Check the timer condition for stopping teleportation
+    if timerValue == 20 then
+        print("Game time has reached 00:20. Stopping teleportation actions.")
+        teleportationStopped = true  -- Set flag to prevent actions
+    elseif timerValue > 20 then
+        -- Only attempt teleportation if it's not been stopped
+        if teleportationStopped then
+            print("Timer is above 20 seconds now. Resuming actions.")
+            teleportationStopped = false  -- Allow actions again
+        end
+
+        -- Get the player's score and handle game logic
+        local playerScore = getPlayerScore()
+
+        -- Check if the player's score exceeds 40,000 and display a reminder
+        if playerScore and playerScore >= 40000 then
+            print("Reminder: Your score has reached 40,000!")
+            -- You can also use a UI notification instead of print if desired
+            -- Example: player:SendNotification({Title = "Score Reminder", Text = "Your score has reached 40,000!"})
+        end
+        
+        -- Teleport to MeshParts named "Petal" within the nested models in Rings only
+        teleportToRings()
+    end
+
+    -- Delay before the next iteration
+    wait(1)
+end
