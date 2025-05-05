@@ -3,6 +3,1489 @@
 
 --loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoptMeHalloWeenUis/refs/heads/main/CandyUiLoader.lua')))()
 
+
+
+
+
+
+
+-- Services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local workspace = game:GetService("Workspace") -- Get Workspace service
+
+-- Player
+local localPlayer = Players.LocalPlayer -- Using Players.LocalPlayer
+
+print("Script started - Combined Persistent Debug UI with Refresh and Actions")
+
+-- Table to map Image IDs (MUST use rbxassetid:// prefix consistently)
+-- to human-readable labels and action logic
+-- Only actions for Image IDs detected in the game's Ailment UI will have a button.
+local actionMap = {
+    ["rbxassetid://18861596457"] = { label = "Orange: Salon Task", action = "SalonTask" },
+    ["rbxassetid://18861581779"] = { label = "Orange: Camp Task", action = "CampTask" },
+    ["rbxassetid://114214522765525"] = { label = "Moon Task", action = "MoonTask" },
+    ["rbxassetid://18861599789"] = { label = "Playground Task", action = "PlaygroundTask" },
+    ["rbxassetid://18861582601"] = { label = "Drive Task", action = "DriveTask" },
+    ["rbxassetid://18861587647"] = { label = "Hunger Task", action = "HungerTask" },
+    ["rbxassetid://18861586659"] = { label = "Thirst Task", action = "ThirstTask" },
+    ["rbxassetid://18861598641"] = { label = "Sleep Task", action = "SleepTask" },
+    ["rbxassetid://18861601959"] = { label = "Toilet Task", action = "ToiletTask" },
+    ["rbxassetid://18861597514"] = { label = "Shower Task", action = "ShowerTask" },
+    ["rbxassetid://YOUR_WALK_ICON_ID_HERE"] = { label = "Walk Task", action = "WalkTask" }, -- REPLACE WITH ACTUAL ID
+    ["rbxassetid://BEACH_PARTY_ICON_ID"] = { label = "Beach Party Task", action = "BeachPartyTask" }, -- REPLACE WITH ACTUAL ID
+    ["rbxassetid://YOUR_PIZZA_PARTY_ICON_ID_HERE"] = { label = "PizzaParty Task", action = "PizzaPartyTask" }, -- REPLACE WITH ACTUAL ID
+    ["rbxassetid://YOUR_SCHOOL_ICON_ID_HERE"] = { label = "School Task", action = "SchoolTask" } -- REPLACE WITH ACTUAL ID
+    -- Add other ailment Image IDs and their corresponding actions here
+}
+print("actionMap defined with", table.getn(actionMap), "entries.") -- Debug: Check actionMap size
+
+
+-- Variables to keep track of temporary platforms (Client-side, may not sync)
+local currentWalkPlatform = nil
+local currentBeachPartyPlatform = nil
+local currentDrivePlatform = nil
+
+-- Flag to track if the "Did not find Tool button" message has been printed (optional)
+local didNotFindToolButtonMessagePrinted = false
+
+-- --- WARNING ---
+-- The following functions attempt to simulate clicks or manipulate objects client-side.
+-- This is highly game-dependent and may not work reliably or at all.
+-- The most robust approach is to find and call the game's actual client-side functions or RemoteEvents.
+-- --- END WARNING ---
+
+-- Fire all connections of a button's event (Used for simulating clicks)
+-- NOTE: getconnections is non-standard and may not work.
+local function fireConnections(event)
+    if type(getconnections) == "function" then
+        local success, connections = pcall(getconnections, event)
+        if success then
+            for _, connection in pairs(connections) do
+                local fireSuccess, result = pcall(connection.Fire)
+                if not fireSuccess then
+                    warn("Error firing connection:", result)
+                end
+            end
+        else
+             warn("Error getting connections:", connections)
+        end
+    else
+         -- Fallback - less likely to work for game's internal events
+        if event.Name == "MouseButton1Down" then
+            pcall(event.Fire, event)
+        elseif event.Name == "MouseButton1Click" then
+             pcall(event.Fire, event)
+        elseif event.Name == "MouseButton1Up" then
+             pcall(event.Fire, event)
+        else
+             -- warn("getconnections function not available and cannot simulate event firing for:", event.Name) -- Too spammy
+        end
+    end
+end
+
+-- Simulate a click on a button
+local function simulateClick(button)
+    if button and button:IsA("GuiButton") then
+        print("Attempting to simulate click on:", button.Name)
+        local success, result = pcall(function()
+            fireConnections(button.MouseButton1Down)
+            wait(0.05) -- Small delay
+            fireConnections(button.MouseButton1Click)
+            wait(0.05) -- Small delay
+            fireConnections(button.MouseButton1Up)
+        end)
+        if success then
+             print("Simulated click on:", button.Name, "successful.")
+        else
+             warn("Error simulating click on", button.Name, ":", result)
+        end
+    else
+        warn("Invalid or non-button object provided for simulateClick!")
+    end
+end
+
+
+-- Function to find the "Container" holding the ailment icons in the game's UI
+local function getAilmentsContainer()
+    local playerGui = localPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return nil end
+
+    -- Based on previous attempts and typical Roblox UI structures
+    local ailmentsApp = playerGui:FindFirstChild("AilmentsApp")
+    local ailmentContainer = ailmentsApp and ailmentsApp:FindFirstChild("Frame")
+        and ailmentsApp.Frame:FindFirstChild("AilmentList")
+        and ailmentsApp.Frame.AilmentList:FindFirstChild("AilmentContainer")
+
+    -- If the above path doesn't work, try a more general search within PlayerGui
+    if not ailmentContainer then
+         -- This is a fallback and might find the wrong container
+         -- print("Standard AilmentsApp path not found, trying broader search...") -- Optional debug
+         for _, gui in ipairs(playerGui:GetChildren()) do
+             if gui:IsA("ScreenGui") then
+                 local found = gui:FindFirstChild("AilmentContainer", true) -- Search descendants
+                 if found and found:IsA("GuiObject") then
+                     -- print("Found AilmentContainer using broader search:", found.GetFullName()) -- Optional debug
+                     return found
+                 end
+             end
+         end
+    end
+
+    return ailmentContainer -- Return the found container (or nil)
+end
+
+-- Function to dynamically find ailment icon Image IDs in the container
+local function findAilmentIcons()
+    local container = getAilmentsContainer()
+    local foundIds = {}
+
+    if container then
+        -- Iterate through all descendants of the container
+        for _, descendant in ipairs(container:GetDescendants()) do
+            -- Look for ImageLabels that have a valid Image ID
+            if descendant:IsA("ImageLabel") and descendant.Image ~= "" then
+                 -- Ensure the Image ID is in the actionMap before considering it
+                 if actionMap[descendant.Image] then
+                    foundIds[descendant.Image] = true
+                 -- else
+                     -- print("Image ID", descendant.Image, "found in game UI but not in actionMap. Skipping.") -- Optional debug
+                 end
+            end
+            -- You could add checks for ImageButtons if they are the icons themselves
+            -- elseif descendant:IsA("ImageButton") and descendant.Image ~= "" then
+            --    if actionMap[descendant.Image] then
+            --       foundIds[descendant.Image] = true
+            --    end
+            -- end
+        end
+    end
+
+    return foundIds
+end
+
+
+-- Function to create or get the debug UI
+local function createUI()
+    print("Attempting to create UI...") -- Debug
+    local playerGui = localPlayer:WaitForChild("PlayerGui", 10) -- Increased timeout
+    if not playerGui then
+        warn("PlayerGui not found within 10 seconds. Cannot create UI.")
+        return nil, nil
+    end
+    print("PlayerGui found.") -- Debug
+
+    local debugGui = playerGui:FindFirstChild("UIDebug")
+    if not debugGui then
+        debugGui = Instance.new("ScreenGui")
+        debugGui.Name = "UIDebug"
+        debugGui.DisplayOrder = 999 -- Ensure it's on top
+        debugGui.Parent = playerGui
+        print("Created new UIDebug ScreenGui.") -- Debug
+    else
+         print("Found existing UIDebug ScreenGui.") -- Debug
+    end
+
+    local idDisplayScroller = debugGui:FindFirstChild("AilmentInfoScroller")
+    if not idDisplayScroller then
+        idDisplayScroller = Instance.new("ScrollingFrame")
+        idDisplayScroller.Name = "AilmentInfoScroller"
+        idDisplayScroller.Size = UDim2.new(0, 220, 0, 250)
+        idDisplayScroller.Position = UDim2.new(0.01, 0, 0.01, 30) -- Position below potential refresh button
+        idDisplayScroller.BackgroundColor3 = Color3.new(0.3, 0.3, 0.3)
+        idDisplayScroller.BackgroundTransparency = 0.2
+        idDisplayScroller.BorderSizePixel = 0
+        idDisplayScroller.VerticalScrollBarInset = Enum.ScrollBarInset.Always
+        idDisplayScroller.ScrollBarThickness = 8
+        idDisplayScroller.CanvasSize = UDim2.new(0, 0, 0, 0) -- Will be updated dynamically
+        idDisplayScroller.Parent = debugGui
+        print("Created new AilmentInfoScroller.") -- Debug
+
+        local uiListLayout = Instance.new("UIListLayout")
+        uiListLayout.Name = "AilmentListLayout" -- Give the layout a name
+        uiListLayout.Parent = idDisplayScroller
+        uiListLayout.Padding = UDim.new(0, 2)
+        uiListLayout.FillDirection = Enum.FillDirection.Vertical
+        uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        uiListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+         print("Added UIListLayout to scroller.") -- Debug
+    else
+         print("Found existing AilmentInfoScroller.") -- Debug
+         if not idDisplayScroller:FindFirstChild("AilmentListLayout") then
+             local uiListLayout = Instance.new("UIListLayout")
+             uiListLayout.Name = "AilmentListLayout"
+             uiListLayout.Parent = idDisplayScroller
+             uiListLayout.Padding = UDim.new(0, 2)
+             uiListLayout.FillDirection = Enum.FillDirection.Vertical
+             uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+             uiListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+              print("Added missing UIListLayout to found scroller.") -- Debug
+         end
+    end
+    print("UI creation attempt finished.") -- Debug
+    return debugGui, idDisplayScroller
+end
+
+local debugGui, idDisplayScroller = createUI()
+
+-- Check if UI creation was successful before proceeding
+if not debugGui or not idDisplayScroller then
+    warn("Debug UI creation failed. Script functionality may be limited.")
+else
+    print("Debug UI created successfully.") -- Debug
+end
+
+
+-- Function to perform actions based on the Image ID
+local function performAction(imageId)
+    local actionInfo = actionMap[imageId]
+    if actionInfo then
+        print("Button for", actionInfo.label, "was clicked! Action:", actionInfo.action)
+
+        -- Remove specific temporary platforms if that action is clicked again
+        if actionInfo.action == "WalkTask" and currentWalkPlatform and currentWalkPlatform.Parent then
+            currentWalkPlatform:Destroy()
+            currentWalkPlatform = nil
+            print("Removed previous Walk Task platform before starting a new one.")
+        elseif actionInfo.action == "BeachPartyTask" and currentBeachPartyPlatform and currentBeachPartyPlatform.Parent then
+            currentBeachPartyPlatform:Destroy()
+            currentBeachPartyPlatform = nil
+            print("Removed previous Beach Party Task platform before starting a new one.")
+        elseif actionInfo.action == "DriveTask" and currentDrivePlatform and currentDrivePlatform.Parent then
+            currentDrivePlatform:Destroy()
+            currentDrivePlatform = nil
+            print("Removed previous Drive Task platform before starting a new one.")
+        end
+
+        -- --- WARNING ---
+        -- The following action logic attempts client-side manipulation and API calls.
+        -- Success is highly dependent on the game's implementation and may break.
+        -- The most robust approach is to find and call the game's actual client-side functions or RemoteEvents.
+        -- --- END WARNING ---
+
+        if actionInfo.action == "DriveTask" then -- Drive Task Logic (Create Platform, Stroller, Pet, Jump)
+            if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local humanoidRootPart = localPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
+
+                if humanoid then
+                    local randomX = math.random(-50, 50)
+                    local randomZ = math.random(-50, 50)
+                    local randomY = math.random(10, 20)
+
+                    local randomPosition = Vector3.new(randomX, randomY, randomZ)
+
+                    -- Client-side platform creation - may not sync with server
+                    local platform = Instance.new("Part")
+                    platform.Name = "DriveTaskPlatform"
+                    platform.Size = Vector3.new(50, 1, 50)
+                    platform.CFrame = CFrame.new(randomPosition)
+                    platform.Color = Color3.new(0.1, 0.1, 0.1)
+                    platform.Anchored = true
+                    platform.CanCollide = true
+                    platform.Parent = workspace
+
+                    currentDrivePlatform = platform
+
+                    -- Client-side teleport - may not sync with server
+                    local teleportPosition = platform.Position + Vector3.new(0, platform.Size.Y/2 + 2, 0)
+                    humanoidRootPart.CFrame = CFrame.new(teleportPosition)
+                    print("Action: Created Drive Task platform and teleported player.")
+
+                    -- --- Start of Drive Task Actions ---
+
+                    -- Action 1: Put stroller in hotbar
+                    coroutine.wrap(function()
+                        local api = ReplicatedStorage:WaitForChild("API", 10)
+                        if api then
+                            local setSlotPropertiesAPI = api:WaitForChild("ToolAPI/SetSlotProperties", 10)
+                            if setSlotPropertiesAPI then
+                                local args = {
+                                    1,
+                                    {
+                                        category = "strollers",
+                                        kind = "stroller-default"
+                                    }
+                                }
+                                local success, result = pcall(setSlotPropertiesAPI.InvokeServer, setSlotPropertiesAPI, unpack(args))
+                                if success then
+                                    print("Invoked Server to put stroller in hotbar slot 1. Result:", result)
+                                else
+                                    warn("Error invoking Server for SetSlotProperties:", result)
+                                end
+                            else
+                                warn("ToolAPI/SetSlotProperties not found.")
+                            end
+                        else
+                            warn("API folder not found in ReplicatedStorage.")
+                        end
+                    end)()
+
+                    -- Action 2: Equip the stroller (Simulate click on "Tool")
+                    coroutine.wrap(function()
+                        wait(2)
+
+                        local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+                        if not playerGui then warn("PlayerGui not found for equipping stroller."); return end
+
+                        local toolApp = playerGui:WaitForChild("ToolApp", 10)
+                        if not toolApp then warn("ToolApp not found for equipping stroller."); return end
+
+                        local toolFrame = toolApp:WaitForChild("Frame", 10)
+                         if not toolFrame then warn("ToolFrame not found for equipping stroller."); return end
+
+                        local hotbar = toolFrame:WaitForChild("Hotbar", 10)
+                        if not hotbar then warn("Hotbar not found for equipping stroller."); return end
+
+                        local toolContainer = hotbar:WaitForChild("ToolContainer", 10)
+                        if not toolContainer then warn("ToolContainer not found for equipping stroller."); return end
+
+                        local foundToolButton = nil
+                        for _, child in ipairs(toolContainer:GetChildren()) do
+                            if child:IsA("GuiButton") and (child.Name == "Tool" or child.Name:lower():find("stroller")) then
+                                foundToolButton = child
+                                break
+                            end
+                        end
+
+                        if foundToolButton then
+                            print("Found button to equip stroller ('" .. foundToolButton.Name .. "'). Simulating click.")
+                            simulateClick(foundToolButton)
+                             didNotFindToolButtonMessagePrinted = false
+                        else
+                            if not didNotFindToolButtonMessagePrinted then
+                                warn("Did not find a suitable button ('Tool' or 'stroller') under ToolContainer to equip stroller.")
+                                didNotFindToolButtonMessagePrinted = true
+                            end
+                        end
+                    end)()
+
+                    -- Action 3: Put pet in stroller
+                    coroutine.wrap(function()
+                         wait(4)
+
+                        local petsContainer = workspace:WaitForChild("Pets", 10)
+                         if not petsContainer then warn("workspace.Pets not found."); return end
+
+                         local firstPetModel = nil
+                         for _, child in ipairs(petsContainer:GetChildren()) do
+                             if child:IsA("Model") and child:FindFirstChild("Humanoid") then
+                                 firstPetModel = child
+                                 break
+                             end
+                         end
+
+                         if firstPetModel then
+                             print("Found a pet model:", firstPetModel.Name)
+                             local character = localPlayer.Character
+                             if not character then warn("Character not found for putting pet in stroller."); return end
+                             local strollerTool = character:WaitForChild("StrollerTool", 10)
+                             if strollerTool then
+                                 local modelHandle = strollerTool:WaitForChild("ModelHandle", 10)
+                                 if modelHandle then
+                                     local touchToSits = modelHandle:WaitForChild("TouchToSits", 10)
+                                     if touchToSits then
+                                         local touchToSitPart = touchToSits:WaitForChild("TouchToSit", 10)
+                                         if touchToSitPart then
+                                             local api = ReplicatedStorage:WaitForChild("API", 10)
+                                             if api then
+                                                 local adoptAPI = api:WaitForChild("AdoptAPI/UseStroller", 10)
+                                                 if adoptAPI then
+                                                     local args = {
+                                                         firstPetModel,
+                                                         touchToSitPart
+                                                     }
+                                                     local success, result = pcall(adoptAPI.InvokeServer, adoptAPI, unpack(args))
+                                                     if success then
+                                                         print("Invoked Server to put pet in stroller. Result:", result)
+                                                     else
+                                                         warn("Error invoking Server for UseStroller:", result)
+                                                     end
+                                                 else
+                                                     warn("AdoptAPI/UseStroller not found.")
+                                                 end
+                                             else
+                                                warn("API folder not found in ReplicatedStorage.")
+                                             end
+                                         else
+                                              warn("TouchToSit part not found in StrollerTool model.")
+                                         end
+                                     else
+                                         warn("TouchToSits not found in StrollerTool model.")
+                                     end
+                                 else
+                                      warn("ModelHandle not found in StrollerTool.")
+                                 end
+                             else
+                                 warn("StrollerTool not found in character after waiting.")
+                             end
+                         else
+                             warn("Did not find the first pet model in workspace.Pets. Cannot put pet in stroller.")
+                         end
+                    end)()
+
+                    -- Action 4: Start jumping 30 times
+                    coroutine.wrap(function()
+                        wait(6)
+
+                        local character = localPlayer.Character
+                        if character and character:FindFirstChildOfClass("Humanoid") then
+                            local currentHumanoid = character:FindFirstChildOfClass("Humanoid")
+                            print("Starting 30 jumps on Drive Task platform...")
+                            for i = 1, 30 do
+                                if currentHumanoid.Parent and currentDrivePlatform and currentDrivePlatform.Parent then
+                                    currentHumanoid.Jump = true
+                                    wait(0.5)
+                                    currentHumanoid.Jump = false
+                                    wait(0.5)
+                                else
+                                    print("Drive Task jump loop interrupted (Character or platform removed).")
+                                    break
+                                end
+                            end
+                            print("Drive Task jump count reached (30 jumps).")
+                        else
+                            warn("Humanoid not found for jumping after Drive Task actions (Character may have reset).")
+                        end
+                    end)()
+
+                    -- --- End of Drive Task Actions ---
+
+                else
+                    print("Action: Could not perform Drive Task - Humanoid not found.")
+                end
+            else
+                print("Action: Could not perform Drive Task - Character or HumanoidRootPart not found.")
+            end
+
+        elseif actionInfo.action == "SleepTask" then
+            local api = ReplicatedStorage:WaitForChild("API", 10)
+            if api then
+                local apiSpawn = api:WaitForChild("TeamAPI/Spawn", 10)
+                if apiSpawn then
+                    local success, result = pcall(apiSpawn.InvokeServer, apiSpawn)
+                    if success then
+                         print("Action: InvokeServer called for Spawn. Result:", result)
+                    else
+                         warn("Error invoking Server for Spawn:", result)
+                    end
+                else
+                    print("Error: API/TeamAPI/Spawn not found.")
+                end
+            else
+                warn("API folder not found in ReplicatedStorage.")
+            end
+
+        elseif actionInfo.action == "MoonTask" then
+            local api = ReplicatedStorage:WaitForChild("API", 10)
+            local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+            local interiorsWorkspace = workspace:WaitForChild("Interiors", 10)
+
+            if not api then warn("API folder not found for Moon Task."); return end
+            if not playerGui then warn("PlayerGui not found for Moon Task."); return end
+            if not interiorsWorkspace then warn("workspace.Interiors not found for Moon Task."); return end
+
+            local downloadsAPI = api:WaitForChild("DownloadsAPI/Download", 10)
+            local locationAPI = api:WaitForChild("LocationAPI/SetLocation", 10)
+
+            if not downloadsAPI then warn("DownloadsAPI/Download not found for Moon Task."); return end
+            if not locationAPI then warn("LocationAPI/SetLocation not found for Moon Task."); return end
+
+            local downloadArgs = {"Interiors", "MoonInterior"}
+             local success, result = pcall(downloadsAPI.InvokeServer, downloadsAPI, table.unpack(downloadArgs))
+             if success then
+                print("Invoked Server for MoonInterior download. Result:", result)
+             else
+                 warn("Error invoking Server for MoonInterior download:", result)
+             end
+
+            local locationArgs = {"MoonInterior"}
+             local success, result = pcall(locationAPI.FireServer, locationAPI, table.unpack(locationArgs))
+             if success then
+                print("Fired Server to set location to MoonInterior. Result:", result)
+             else
+                 warn("Error firing Server for SetLocation (Moon Task):", result)
+             end
+
+            coroutine.wrap(function()
+                wait(3)
+
+                -- Client-side cleanup - may not sync with server
+                for _, item in ipairs(interiorsWorkspace:GetChildren()) do
+                    if item:IsA("BasePart") or item:IsA("Model") then
+                        item:Destroy()
+                        print("Removed:", item.Name, "from Interiors (Moon Task cleanup).")
+                    end
+                end
+
+                -- Client-side model parenting - may not sync with server
+                local moonInteriorModel = playerGui:WaitForChild("MoonInterior", 10)
+                if moonInteriorModel then
+                    moonInteriorModel.Parent = interiorsWorkspace
+                    print("Moved MoonInterior model to workspace.Interiors.")
+
+                    -- Client-side teleport - may not sync with server
+                    local teleportTarget = interiorsWorkspace:FindFirstChild("MoonInterior")
+                        and interiorsWorkspace.MoonInterior:FindFirstChild("Asteroids")
+                        and interiorsWorkspace.MoonInterior.Asteroids:FindFirstChild("StationaryOrbit")
+                        and interiorsWorkspace.MoonInterior.Asteroids.StationaryOrbit:FindFirstChild("Center")
+
+                    local character = localPlayer.Character
+                    if character and character:FindFirstChild("HumanoidRootPart") and teleportTarget then
+                        local humanoidRootPart = character.HumanoidRootPart
+                        humanoidRootPart.CFrame = CFrame.new(teleportTarget.Position + Vector3.new(0, 2, 0))
+                        print("Teleported to MoonInterior.Asteroids.StationaryOrbit.Center.")
+                    else
+                        warn("Error: Could not find teleport target in MoonInterior or Character/HRP missing for Moon Task.")
+                         print("Target Path Check:")
+                         print("workspace.Interiors:", interiorsWorkspace)
+                         if interiorsWorkspace then
+                             print("MoonInterior:", interiorsWorkspace:FindFirstChild("MoonInterior"))
+                             if interiorsWorkspace:FindFirstChild("MoonInterior") then
+                                 print("Asteroids:", interiorsWorkspace.MoonInterior:FindFirstChild("Asteroids"))
+                                 if interiorsWorkspace.MoonInterior.Asteroids:FindFirstChild("StationaryOrbit") then
+                                     print("StationaryOrbit:", interiorsWorkspace.MoonInterior.Asteroids.StationaryOrbit:FindFirstChild("StationaryOrbit"))
+                                     if interiorsWorkspace.MoonInterior.Asteroids.StationaryOrbit:FindFirstChild("Center") then
+                                         print("Center:", interiorsWorkspace.MoonInterior.Asteroids.StationaryOrbit:FindFirstChild("Center"))
+                                     end
+                                 end
+                             end
+                         end
+                    end
+                else
+                    warn("Error: MoonInterior model not found in PlayerGui after download attempt.")
+                end
+            end)()
+
+        elseif actionInfo.action == "SalonTask" then
+            local api = ReplicatedStorage:WaitForChild("API", 10)
+            local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+            local interiorsWorkspace = workspace:WaitForChild("Interiors", 10)
+
+            if not api then warn("API folder not found for Salon Task."); return end
+            if not playerGui then warn("PlayerGui not found for Salon Task."); return end
+            if not interiorsWorkspace then warn("workspace.Interiors not found for Salon Task."); return end
+
+            local downloadsAPI = api:WaitForChild("DownloadsAPI/Download", 10)
+            local locationAPI = api:WaitForChild("LocationAPI/SetLocation", 10)
+
+            if not downloadsAPI then warn("DownloadsAPI/Download not found for Salon Task."); return end
+            if not locationAPI then warn("LocationAPI/SetLocation not found for Salon Task."); return end
+
+            local downloadArgs = {"Interiors", "Salon"}
+             local success, result = pcall(downloadsAPI.InvokeServer, downloadsAPI, table.unpack(downloadArgs))
+             if success then
+                print("Invoked Server for Salon download. Result:", result)
+             else
+                 warn("Error invoking Server for Salon download:", result)
+             end
+
+            local locationArgs = {"Salon"}
+             local success, result = pcall(locationAPI.FireServer, locationAPI, table.unpack(locationArgs))
+             if success then
+                print("Fired Server to set location to Salon. Result:", result)
+             else
+                 warn("Error firing Server for SetLocation (Salon Task):", result)
+             end
+
+            coroutine.wrap(function()
+                wait(3)
+
+                -- Client-side cleanup - may not sync with server
+                for _, item in ipairs(interiorsWorkspace:GetChildren()) do
+                    if item:IsA("BasePart") or item:IsA("Model") then
+                        item:Destroy()
+                        print("Removed:", item.Name, "from Interiors (Salon Task cleanup).")
+                    end
+                end
+
+                -- Client-side model parenting - may not sync with server
+                local salonModel = playerGui:WaitForChild("Salon", 10)
+                 if salonModel then
+                     salonModel.Parent = interiorsWorkspace
+                     print("Moved Salon model to workspace.Interiors.")
+
+                     -- Client-side teleport - may not sync with server
+                     local teleportTarget = interiorsWorkspace:FindFirstChild("Salon")
+                         and interiorsWorkspace.Salon:FindFirstChild("InteriorOrigin")
+
+                     local character = localPlayer.Character
+                     if character and character:FindFirstChild("HumanoidRootPart") and teleportTarget then
+                         local humanoidRootPart = character.HumanoidRootPart
+                         humanoidRootPart.CFrame = CFrame.new(teleportTarget.Position + Vector3.new(0, 2, 0))
+                         print("Teleported to workspace.Interiors.Salon.InteriorOrigin.")
+                     else
+                         warn("Error: Could not find teleport target in Salon or Character/HRP missing for Salon Task.")
+                         print("Expected target path check:")
+                         print("workspace.Interiors:", interiorsWorkspace)
+                         if interiorsWorkspace then
+                             print("Salon:", interiorsWorkspace:FindFirstChild("Salon"))
+                             if interiorsWorkspace:FindFirstChild("Salon") then
+                                 print("InteriorOrigin:", interiorsWorkspace.Salon:FindFirstChild("InteriorOrigin"))
+                             end
+                         end
+                     end
+                 else
+                     warn("Error: Salon model not found in PlayerGui after download attempt (Salon Task).")
+                 end
+            end)()
+
+        elseif actionInfo.action == "CampTask" then -- Camp Task Logic
+             local api = ReplicatedStorage:WaitForChild("API", 10)
+            local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+            local interiorsWorkspace = workspace:WaitForChild("Interiors", 10)
+
+            if not api then warn("API folder not found for Camp Task."); return end
+            if not playerGui then warn("PlayerGui not found for Camp Task."); return end
+            if not interiorsWorkspace then warn("workspace.Interiors not found for Camp Task."); return end
+
+            local downloadsAPI = api:WaitForChild("DownloadsAPI/Download", 10)
+            local locationAPI = api:WaitForChild("LocationAPI/SetLocation", 10)
+
+            if not downloadsAPI then warn("DownloadsAPI/Download not found for Camp Task."); return end
+            if not locationAPI then warn("LocationAPI/SetLocation not found for Camp Task."); return end
+
+            local downloadArgs = {"Interiors", "MainMap!Default"}
+             local success, result = pcall(downloadsAPI.InvokeServer, downloadsAPI, table.unpack(downloadArgs))
+             if success then
+                print("Invoked Server for MainMap!Default download (Camp Task). Result:", result)
+             else
+                 warn("Error invoking Server for MainMap!Default download (Camp Task):", result)
+             end
+
+            local locationArgs = {"MainMap", "Default"}
+             local success, result = pcall(locationAPI.FireServer, locationAPI, table.unpack(locationArgs))
+             if success then
+                print("Fired Server to set location to MainMap with Default (Camp Task). Result:", result)
+             else
+                 warn("Error firing Server for SetLocation (Camp Task):", result)
+             end
+
+            coroutine.wrap(function()
+                wait(3)
+
+                -- Client-side cleanup - may not sync with server
+                for _, item in ipairs(interiorsWorkspace:GetChildren()) do
+                    if item:IsA("BasePart") or item:IsA("Model") then
+                        item:Destroy()
+                        print("Removed:", item.Name, "from Interiors (Camp Task cleanup).")
+                    end
+                end
+
+                -- Client-side model parenting - may not sync with server
+                local mainMapDefaultModel = playerGui:WaitForChild("MainMap!Default", 10)
+                 if mainMapDefaultModel then
+                     mainMapDefaultModel.Parent = interiorsWorkspace
+                     print("Moved MainMap!Default model to workspace.Interiors (Camp Task).")
+
+                     -- Client-side teleport - may not sync with server
+                     local teleportTarget = interiorsWorkspace:FindFirstChild("MainMap!Default")
+                         and interiorsWorkspace["MainMap!Default"]:FindFirstChild("Static")
+                         and interiorsWorkspace["MainMap!Default"].Static:FindFirstChild("Campsite")
+                         and interiorsWorkspace["MainMap!Default"].Static.Campsite:FindFirstChild("MarshmallowChair")
+
+                     local character = localPlayer.Character
+                     if character and character:FindFirstChild("HumanoidRootPart") and teleportTarget then
+                         local children = teleportTarget:GetChildren()
+                         local fifthChild = #children >= 5 and children[5]
+
+                         if fifthChild then
+                             local stickPart = fifthChild:FindFirstChild("Stick")
+
+                             if stickPart then
+                                 local humanoidRootPart = character.HumanoidRootPart
+                                 humanoidRootPart.CFrame = CFrame.new(stickPart.Position + Vector3.new(0, 5, 0))
+                                 print("Teleported to Campfire Stick.")
+                             else
+                                  warn("Error: Could not find Stick part in MarshmallowChair for Camp Task.")
+                                  print("Stick part found:", stickPart)
+                             end
+                         else
+                              warn("Error: Could not find the 5th child of MarshmallowChair for Camp Task.")
+                         end
+                     else
+                         warn("Error: Could not find teleport target path (Static/Campsite/MarshmallowChair) or Character/HRP missing for Camp Task.")
+                         print("Expected target path check:")
+                         print("workspace.Interiors:", interiorsWorkspace)
+                         if interiorsWorkspace then
+                             print("MainMap!Default:", interiorsWorkspace:FindFirstChild("MainMap!Default"))
+                             if interiorsWorkspace:FindFirstChild("MainMap!Default") then
+                                 print("Static:", interiorsWorkspace["MainMap!Default"]:FindFirstChild("Static"))
+                                 if interiorsWorkspace["MainMap!Default"].Static:FindFirstChild("Campsite") then
+                                     print("Campsite:", interiorsWorkspace["MainMap!Default"].Static:FindFirstChild("Campsite"))
+                                     if interiorsWorkspace["MainMap!Default"].Static.Campsite:FindFirstChild("MarshmallowChair") then
+                                         print("MarshmallowChair:", interiorsWorkspace["MainMap!Default"].Static.Campsite:FindFirstChild("MarshmallowChair"))
+                                     end
+                                 end
+                             end
+                         end
+                     end
+                 else
+                     warn("Error: MainMap!Default model not found in PlayerGui after download attempt (Camp Task).")
+                 end
+            end)()
+
+        elseif actionInfo.action == "PlaygroundTask" then -- Playground Task Logic
+             local api = ReplicatedStorage:WaitForChild("API", 10)
+             local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+             local interiorsWorkspace = workspace:WaitForChild("Interiors", 10)
+             local staticMap = workspace:WaitForChild("StaticMap", 10)
+
+             if not api then warn("API folder not found for Playground Task."); return end
+             if not playerGui then warn("PlayerGui not found for Playground Task."); return end
+             if not interiorsWorkspace then warn("workspace.Interiors not found for Playground Task."); return end
+             if not staticMap then warn("workspace.StaticMap not found for Playground Task."); return end
+
+            local downloadsAPI = api:WaitForChild("DownloadsAPI/Download", 10)
+            local locationAPI = api:WaitForChild("LocationAPI/SetLocation", 10)
+
+            if not downloadsAPI then warn("DownloadsAPI/Download not found for Playground Task."); return end
+            if not locationAPI then warn("LocationAPI/SetLocation not found for Playground Task."); return end
+
+            coroutine.wrap(function()
+                 if not (interiorsWorkspace:FindFirstChild("MainMap!Default")) and not playerGui:FindFirstChild("MainMap!Default") then
+                    local downloadArgs = {"Interiors", "MainMap!Default"}
+                     local success, result = pcall(downloadsAPI.InvokeServer, downloadsAPI, table.unpack(downloadArgs))
+                     if success then
+                        print("Invoked Server for MainMap!Default download (Playground Task). Result:", result)
+                     else
+                         warn("Error invoking Server for MainMap!Default download (Playground Task):", result)
+                     end
+                    wait(1)
+                 else
+                     print("MainMap!Default already exists (Playground Task). Skipping download.")
+                 end
+
+                -- Client-side cleanup - may not sync with server
+                for _, item in ipairs(interiorsWorkspace:GetChildren()) do
+                    if item:IsA("BasePart") or item:IsA("Model") then
+                        item:Destroy()
+                        print("Removed:", item.Name, "from Interiors (Playground Task cleanup).")
+                    end
+                end
+
+                -- Client-side model parenting - may not sync with server
+                local mainMapDefaultModel = playerGui:WaitForChild("MainMap!Default", 10)
+                 if mainMapDefaultModel then
+                     mainMapDefaultModel.Parent = interiorsWorkspace
+                     print("Moved MainMap!Default model to workspace.Interiors (Playground Task).")
+                 else
+                     warn("Warning: MainMap!Default model not found in PlayerGui after download attempt (Playground Task). Cannot move to Interiors.")
+                 end
+
+                local locationArgs = {"MainMap", "Default"}
+                 local success, result = pcall(locationAPI.FireServer, locationAPI, table.unpack(locationArgs))
+                 if success then
+                    print("Fired Server to set location to MainMap with Default (Playground Task). Result:", result)
+                 else
+                     warn("Error firing Server for SetLocation (Playground Task):", result)
+                 end
+
+                wait(3)
+
+                -- Client-side teleport - may not sync with server
+                local teleportTarget = staticMap:FindFirstChild("Park")
+                    and staticMap.Park:FindFirstChild("BoredAilmentTarget")
+
+                local character = localPlayer.Character
+                if character and character:FindFirstChild("HumanoidRootPart") and teleportTarget then
+                    local humanoidRootPart = character.HumanoidRootPart
+                    local targetPosition = teleportTarget.Position + Vector3.new(0, 2, 0)
+                    humanoidRootPart.CFrame = CFrame.new(targetPosition)
+                    print("Action: Teleported to BoredAilmentTarget.")
+                else
+                    warn("Action: Could not teleport to BoredAilmentTarget - Character or target not found for Playground Task.")
+                     print("Target Path Check:")
+                    print("workspace.StaticMap:", staticMap)
+                    if staticMap then
+                        print("workspace.StaticMap.Park:", staticMap:FindFirstChild("Park"))
+                        if staticMap:FindFirstChild("Park") then
+                             print("workspace.StaticMap.Park.BoredAilmentTarget:", staticMap.Park:FindFirstChild("BoredAilmentTarget"))
+                        end
+                    end
+                end
+            end)()
+
+        elseif actionInfo.action == "HungerTask" then
+            print("Action: Hunger Task - Add your logic here!")
+        elseif actionInfo.action == "ThirstTask" then
+            print("Action: Thirst Task - Add your logic here!")
+        elseif actionInfo.action == "ToiletTask" then
+            print("Action: Toilet Task - Add your logic here!")
+
+        elseif actionInfo.action == "ShowerTask" then -- Shower Task Logic
+             local api = ReplicatedStorage:WaitForChild("API", 10)
+            local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+            local interiorsWorkspace = workspace:WaitForChild("Interiors", 10)
+
+            if not api then warn("API folder not found for Shower Task."); return end
+            if not playerGui then warn("PlayerGui not found for Shower Task."); return end
+            if not interiorsWorkspace then warn("workspace.Interiors not found for Shower Task."); return end
+
+            local downloadsAPI = api:WaitForChild("DownloadsAPI/Download", 10)
+            local locationAPI = api:WaitForChild("LocationAPI/SetLocation", 10)
+
+            if not downloadsAPI then warn("DownloadsAPI/Download not found for Shower Task."); return end
+            if not locationAPI then warn("LocationAPI/SetLocation not found for Shower Task."); return end
+
+            local downloadArgs = {"Interiors", "VIP"}
+             local success, result = pcall(downloadsAPI.InvokeServer, downloadsAPI, table.unpack(downloadArgs))
+             if success then
+                print("Invoked Server for VIP download (Shower Task). Result:", result)
+             else
+                 warn("Error invoking Server for VIP download (Shower Task):", result)
+             end
+
+            local locationArgs = {"VIP"}
+             local success, result = pcall(locationAPI.FireServer, locationAPI, table.unpack(locationArgs))
+             if success then
+                print("Fired Server to set location to VIP (Shower Task). Result:", result)
+             else
+                 warn("Error firing Server for SetLocation (Shower Task):", result)
+             end
+
+             coroutine.wrap(function()
+                wait(3)
+
+                -- Client-side cleanup - may not sync with server
+                for _, item in ipairs(interiorsWorkspace:GetChildren()) do
+                    if item:IsA("BasePart") or item:IsA("Model") then
+                        item:Destroy()
+                        print("Removed:", item.Name, "from Interiors (Shower Task cleanup).")
+                    end
+                end
+
+                -- Client-side model parenting - may not sync with server
+                local vipModel = playerGui:WaitForChild("VIP", 10)
+                 if vipModel then
+                     vipModel.Parent = interiorsWorkspace
+                     print("Moved VIP model to workspace.Interiors (Shower Task).")
+
+                     -- Client-side teleport - may not sync with server
+                     local teleportTarget = interiorsWorkspace:FindFirstChild("VIP")
+                         and interiorsWorkspace.VIP:FindFirstChild("HotTubOrigin")
+
+                     local character = localPlayer.Character
+                     if character and character:FindFirstChild("HumanoidRootPart") and teleportTarget then
+                         local humanoidRootPart = character.HumanoidRootPart
+                         humanoidRootPart.CFrame = CFrame.new(teleportTarget.Position + Vector3.new(0, 3, 0))
+                         print("Teleported to VIP.HotTubOrigin.")
+                     else
+                         warn("Error: Could not find teleport target (VIP.HotTubOrigin) or Character/HRP missing for Shower Task.")
+                         print("Expected target path check:")
+                         print("workspace.Interiors:", interiorsWorkspace)
+                         if interiorsWorkspace then
+                             print("VIP:", interiorsWorkspace:FindFirstChild("VIP"))
+                             if interiorsWorkspace:FindFirstChild("VIP") then
+                                 print("HotTubOrigin:", interiorsWorkspace.VIP:FindFirstChild("HotTubOrigin"))
+                             end
+                         end
+                     end
+                 else
+                     warn("Error: VIP model not found in PlayerGui after download attempt (Shower Task).")
+                 end
+            end)()
+
+        elseif actionInfo.action == "WalkTask" then -- Walk Task Logic (Create Platform and Jump 20 times, platform stays)
+            if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local humanoidRootPart = localPlayer.Character:FindFirstChild("HumanoidRootPart")
+                local humanoid = localPlayer.Character:FindFirstChildOfClass("Humanoid")
+
+                if humanoid then
+                    local randomX = math.random(-50, 50)
+                    local randomZ = math.random(-50, 50)
+                    local randomY = math.random(10, 20)
+
+                    local randomPosition = Vector3.new(randomX, randomY, randomZ)
+
+                    -- Client-side platform creation - may not sync with server
+                    local platform = Instance.new("Part")
+                    platform.Name = "WalkTaskPlatform"
+                    platform.Size = Vector3.new(30, 1, 30)
+                    platform.CFrame = CFrame.new(randomPosition)
+                    platform.Color = Color3.new(0, 1, 0)
+                    platform.Anchored = true
+                    platform.CanCollide = true
+                    platform.Parent = workspace
+
+                    currentWalkPlatform = platform
+
+                    -- Client-side teleport - may not sync with server
+                    local teleportPosition = platform.Position + Vector3.new(0, platform.Size.Y/2 + 2, 0)
+                    humanoidRootPart.CFrame = CFrame.new(teleportPosition)
+                    print("Action: Created Walk Task platform and teleported player.")
+
+                    coroutine.wrap(function()
+                        wait(0.2)
+
+                        local character = localPlayer.Character
+                        if character and character:FindFirstChildOfClass("Humanoid") then
+                            local currentHumanoid = character:FindFirstChildOfClass("Humanoid")
+                            print("Starting 20 jumps on Walk Task platform...")
+                            for i = 1, 20 do
+                                if currentHumanoid.Parent and currentWalkPlatform and currentWalkPlatform.Parent then
+                                    currentHumanoid.Jump = true
+                                    wait(0.5)
+                                    currentHumanoid.Jump = false
+                                    wait(0.5)
+                                else
+                                    print("Walk Task jump loop interrupted (Character or platform removed).")
+                                    break
+                                end
+                            end
+                            print("Walk Task jump count reached. Platform remains.")
+                        else
+                             warn("Humanoid not found for jumping after Walk Task actions (Character may have reset).")
+                        end
+                    end)()
+
+                else
+                    print("Action: Could not perform Walk Task - Humanoid not found.")
+                end
+            else
+                print("Action: Could not perform Walk Task - Character or HumanoidRootPart not found.")
+            end
+
+        elseif actionInfo.action == "BeachPartyTask" then -- Beach Party Task Logic
+            local api = ReplicatedStorage:WaitForChild("API", 10)
+            local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+            local interiorsWorkspace = workspace:WaitForChild("Interiors", 10)
+            local staticMap = workspace:WaitForChild("StaticMap", 10)
+
+             if not api then warn("API folder not found for Beach Party Task."); return end
+             if not playerGui then warn("PlayerGui not found for Beach Party Task."); return end
+             if not interiorsWorkspace then warn("workspace.Interiors not found for Beach Party Task."); return end
+             if not staticMap then warn("workspace.StaticMap not found for Beach Party Task."); return end
+
+            local downloadsAPI = api:WaitForChild("DownloadsAPI/Download", 10)
+            local locationAPI = api:WaitForChild("LocationAPI/SetLocation", 10)
+
+            if not downloadsAPI then warn("DownloadsAPI/Download not found for Beach Party Task."); return end
+            if not locationAPI then warn("LocationAPI/SetLocation not found for Beach Party Task."); return end
+
+            coroutine.wrap(function()
+                 if not (interiorsWorkspace:FindFirstChild("MainMap!Default")) and not playerGui:FindFirstChild("MainMap!Default") then
+                    local downloadArgs = {"Interiors", "MainMap!Default"}
+                     local success, result = pcall(downloadsAPI.InvokeServer, downloadsAPI, table.unpack(downloadArgs))
+                     if success then
+                        print("Invoked Server for MainMap!Default download (Beach Party Task). Result:", result)
+                     else
+                         warn("Error invoking Server for MainMap!Default download (Beach Party Task):", result)
+                     end
+                    wait(1)
+                 else
+                     print("MainMap!Default already exists (Beach Party Task). Skipping download.")
+                 end
+
+                -- Client-side cleanup - may not sync with server
+                for _, item in ipairs(interiorsWorkspace:GetChildren()) do
+                    if item:IsA("BasePart") or item:IsA("Model") then
+                        item:Destroy()
+                        print("Removed:", item.Name, "from Interiors (Beach Party Task cleanup).")
+                    end
+                end
+
+                -- Client-side model parenting - may not sync with server
+                local mainMapDefaultModel = playerGui:WaitForChild("MainMap!Default", 10)
+                 if mainMapDefaultModel then
+                     mainMapDefaultModel.Parent = interiorsWorkspace
+                     print("Moved MainMap!Default model to workspace.Interiors (Beach Party Task).")
+                 else
+                     warn("Warning: MainMap!Default model not found in PlayerGui after download attempt (Beach Party Task). Cannot move to Interiors.")
+                 end
+
+                local locationArgs = {"MainMap", "Default"}
+                 local success, result = pcall(locationAPI.FireServer, locationAPI, table.unpack(locationArgs))
+                 if success then
+                    print("Fired Server to set location to MainMap with Default (Beach Party Task). Result:", result)
+                 else
+                     warn("Error firing Server for SetLocation (Beach Party Task):", result)
+                 end
+
+                wait(3)
+
+                -- Client-side teleport & platform - may not sync with server
+                local targetPart = staticMap:FindFirstChild("Beach")
+                    and staticMap.Beach:FindFirstChild("BeachPartyAilmentTarget")
+
+                local character = localPlayer.Character
+                if character and character:FindFirstChild("HumanoidRootPart") and targetPart then
+                    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+
+                    if humanoidRootPart then
+                        local platform = Instance.new("Part")
+                        platform.Name = "BeachPartyTaskPlatform"
+                        platform.Size = Vector3.new(30, 1, 30)
+                        platform.CFrame = CFrame.new(targetPart.Position)
+                        platform.Color = Color3.new(1, 0.5, 0)
+                        platform.Anchored = true
+                        platform.CanCollide = true
+                        platform.Parent = workspace
+
+                        currentBeachPartyPlatform = platform
+
+                        local teleportPosition = platform.Position + Vector3.new(0, platform.Size.Y/2 + 2, 0)
+                        humanoidRootPart.CFrame = CFrame.new(teleportPosition)
+                        print("Action: Created Beach Party platform and teleported player.")
+                    else
+                         warn("Error: Could not find Character's HumanoidRootPart for Beach Party Task teleport.")
+                    end
+                else
+                    warn("Action: Could not perform Beach Party Task - Character or target part (BeachPartyAilmentTarget) not found.")
+                    print("Target Path Check:")
+                    print("workspace.StaticMap:", staticMap)
+                    if staticMap then
+                        print("workspace.StaticMap.Beach:", staticMap:FindFirstChild("Beach"))
+                        if staticMap:FindFirstChild("Beach") then
+                             print("workspace.StaticMap.Beach.BeachPartyAilmentTarget:", staticMap.Beach:FindFirstChild("BeachPartyAilmentTarget"))
+                        end
+                    end
+                end
+            end)()
+        elseif actionInfo.action == "PizzaPartyTask" then -- Pizza Party Task Logic
+             local api = ReplicatedStorage:WaitForChild("API", 10)
+             local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+             local interiorsWorkspace = workspace:WaitForChild("Interiors", 10)
+             local staticMap = workspace:WaitForChild("StaticMap", 10)
+
+             if not api then warn("API folder not found for Pizza Party Task."); return end
+             if not playerGui then warn("PlayerGui not found for Pizza Party Task."); return end
+             if not interiorsWorkspace then warn("workspace.Interiors not found for Pizza Party Task."); return end
+             if not staticMap then warn("workspace.StaticMap not found for Pizza Party Task."); return end
+
+            local downloadsAPI = api:WaitForChild("DownloadsAPI/Download", 10)
+            local locationAPI = api:WaitForChild("LocationAPI/SetLocation", 10)
+
+            if not downloadsAPI then warn("DownloadsAPI/Download not found for Pizza Party Task."); return end
+            if not locationAPI then warn("LocationAPI/SetLocation not found for Pizza Party Task."); return end
+
+            coroutine.wrap(function()
+                 if not (interiorsWorkspace:FindFirstChild("MainMap!Default")) and not playerGui:FindFirstChild("MainMap!Default") then
+                    local downloadArgs = {"Interiors", "MainMap!Default"}
+                     local success, result = pcall(downloadsAPI.InvokeServer, downloadsAPI, table.unpack(downloadArgs))
+                     if success then
+                        print("Invoked Server for MainMap!Default download (Pizza Party Task). Result:", result)
+                     else
+                         warn("Error invoking Server for MainMap!Default download (Pizza Party Task):", result)
+                     end
+                    wait(1)
+                 else
+                     print("MainMap!Default already exists (Pizza Party Task). Skipping download.")
+                 end
+
+                -- Client-side cleanup - may not sync with server
+                for _, item in ipairs(interiorsWorkspace:GetChildren()) do
+                    if item:IsA("BasePart") or item:IsA("Model") then
+                        item:Destroy()
+                        print("Removed:", item.Name, "from Interiors (Pizza Party Task cleanup).")
+                    end
+                end
+
+                -- Client-side model parenting - may not sync with server
+                local mainMapDefaultModel = playerGui:WaitForChild("MainMap!Default", 10)
+                 if mainMapDefaultModel then
+                     mainMapDefaultModel.Parent = interiorsWorkspace
+                     print("Moved MainMap!Default model to workspace.Interiors (Pizza Party Task).")
+                 else
+                     warn("Warning: MainMap!Default model not found in PlayerGui after download attempt (Pizza Party Task). Cannot move to Interiors.")
+                 end
+
+                local locationArgs = {"MainMap", "Default"}
+                 local success, result = pcall(locationAPI.FireServer, locationAPI, table.unpack(locationArgs))
+                 if success then
+                    print("Fired Server to set location to MainMap with Default (Pizza Party Task). Result:", result)
+                 else
+                     warn("Error firing Server for SetLocation (Pizza Party Task):", result)
+                 end
+
+                wait(3)
+
+                -- Client-side teleport - may not sync with server
+                local teleportTarget = staticMap:FindFirstChild("Town")
+                    and staticMap.Town:FindFirstChild("PizzaShop")
+                    and staticMap.Town.PizzaShop:FindFirstChild("TeleportTarget") -- Assuming there's a teleport target part here
+
+                local character = localPlayer.Character
+                if character and character:FindFirstChild("HumanoidRootPart") and teleportTarget then
+                    local humanoidRootPart = character.HumanoidRootPart
+                    local targetPosition = teleportTarget.Position + Vector3.new(0, 2, 0)
+                    humanoidRootPart.CFrame = CFrame.new(targetPosition)
+                    print("Action: Teleported to PizzaShop TeleportTarget.")
+
+                    -- Simulate clicking the Pizza Shop UI button if one exists
+                    coroutine.wrap(function()
+                        wait(1) -- Give a moment after teleport
+                        local playerGui = localPlayer:WaitForChild("PlayerGui", 5)
+                        if not playerGui then warn("PlayerGui not found for Pizza Party button click."); return end
+
+                        -- This is a generic attempt - you'll need to find the actual path and name
+                        -- of the Pizza Shop UI button in the game's UI.
+                        local pizzaButton = playerGui:FindFirstChild("SomeGuiName", true) -- Replace "SomeGuiName" with the actual ScreenGui name
+                            and playerGui.SomeGuiName:FindFirstChild("SomeFrameName", true) -- Replace "SomeFrameName" with the actual Frame name
+                            and playerGui.SomeGuiName.SomeFrameName:FindFirstChild("PizzaShopButton") -- Replace "PizzaShopButton" with the actual button name
+
+                        if pizzaButton and pizzaButton:IsA("GuiButton") then
+                            print("Found Pizza Shop UI button. Simulating click.")
+                            simulateClick(pizzaButton)
+                        else
+                            warn("Could not find Pizza Shop UI button to simulate click.")
+                        end
+                    end)()
+
+                else
+                    warn("Action: Could not teleport to Pizza Shop - Character or target not found for Pizza Party Task.")
+                     print("Target Path Check:")
+                     print("workspace.StaticMap:", staticMap)
+                     if staticMap then
+                         print("workspace.StaticMap.Town:", staticMap:FindFirstChild("Town"))
+                         if staticMap:FindFirstChild("Town") then
+                             print("workspace.StaticMap.Town.PizzaShop:", staticMap.Town:FindFirstChild("PizzaShop"))
+                             if staticMap.Town.PizzaShop:FindFirstChild("TeleportTarget") then
+                                 print("workspace.StaticMap.Town.PizzaShop.TeleportTarget:", staticMap.Town.PizzaShop:FindFirstChild("TeleportTarget"))
+                             end
+                         end
+                     end
+                end
+            end)()
+
+        elseif actionInfo.action == "SchoolTask" then -- School Task Logic
+             local api = ReplicatedStorage:WaitForChild("API", 10)
+             local playerGui = localPlayer:WaitForChild("PlayerGui", 10)
+             local interiorsWorkspace = workspace:WaitForChild("Interiors", 10)
+             local staticMap = workspace:WaitForChild("StaticMap", 10)
+
+             if not api then warn("API folder not found for School Task."); return end
+             if not playerGui then warn("PlayerGui not found for School Task."); return end
+             if not interiorsWorkspace then warn("workspace.Interiors not found for School Task."); return end
+             if not staticMap then warn("workspace.StaticMap not found for School Task."); return end
+
+            local downloadsAPI = api:WaitForChild("DownloadsAPI/Download", 10)
+            local locationAPI = api:WaitForChild("LocationAPI/SetLocation", 10)
+
+            if not downloadsAPI then warn("DownloadsAPI/Download not found for School Task."); return end
+            if not locationAPI then warn("LocationAPI/SetLocation not found for School Task."); return end
+
+            coroutine.wrap(function()
+                 if not (interiorsWorkspace:FindFirstChild("MainMap!Default")) and not playerGui:FindFirstChild("MainMap!Default") then
+                    local downloadArgs = {"Interiors", "MainMap!Default"}
+                     local success, result = pcall(downloadsAPI.InvokeServer, downloadsAPI, table.unpack(downloadArgs))
+                     if success then
+                        print("Invoked Server for MainMap!Default download (School Task). Result:", result)
+                     else
+                         warn("Error invoking Server for MainMap!Default download (School Task):", result)
+                     end
+                    wait(1)
+                 else
+                     print("MainMap!Default already exists (School Task). Skipping download.")
+                 end
+
+                -- Client-side cleanup - may not sync with server
+                for _, item in ipairs(interiorsWorkspace:GetChildren()) do
+                    if item:IsA("BasePart") or item:IsA("Model") then
+                        item:Destroy()
+                        print("Removed:", item.Name, "from Interiors (School Task cleanup).")
+                    end
+                end
+
+                -- Client-side model parenting - may not sync with server
+                local mainMapDefaultModel = playerGui:WaitForChild("MainMap!Default", 10)
+                 if mainMapDefaultModel then
+                     mainMapDefaultModel.Parent = interiorsWorkspace
+                     print("Moved MainMap!Default model to workspace.Interiors (School Task).")
+                 else
+                     warn("Warning: MainMap!Default model not found in PlayerGui after download attempt (School Task). Cannot move to Interiors.")
+                 end
+
+                local locationArgs = {"MainMap", "Default"}
+                 local success, result = pcall(locationAPI.FireServer, locationAPI, table.unpack(locationArgs))
+                 if success then
+                    print("Fired Server to set location to MainMap with Default (School Task). Result:", result)
+                 else
+                     warn("Error firing Server for SetLocation (School Task):", result)
+                 end
+
+                wait(3)
+
+                -- Client-side teleport - may not sync with server
+                local teleportTarget = staticMap:FindFirstChild("Town")
+                    and staticMap.Town:FindFirstChild("School")
+                    and staticMap.Town.School:FindFirstChild("TeleportTarget") -- Assuming a teleport target part
+
+                local character = localPlayer.Character
+                if character and character:FindFirstChild("HumanoidRootPart") and teleportTarget then
+                    local humanoidRootPart = character.HumanoidRootPart
+                    local targetPosition = teleportTarget.Position + Vector3.new(0, 2, 0)
+                    humanoidRootPart.CFrame = CFrame.new(targetPosition)
+                    print("Action: Teleported to School TeleportTarget.")
+
+                     -- Simulate clicking the School UI button if one exists
+                    coroutine.wrap(function()
+                        wait(1) -- Give a moment after teleport
+                        local playerGui = localPlayer:WaitForChild("PlayerGui", 5)
+                        if not playerGui then warn("PlayerGui not found for School button click."); return end
+
+                        -- This is a generic attempt - you'll need to find the actual path and name
+                        -- of the School UI button in the game's UI.
+                        local schoolButton = playerGui:FindFirstChild("SomeGuiName", true) -- Replace "SomeGuiName"
+                            and playerGui.SomeGuiName:FindFirstChild("SomeFrameName", true) -- Replace "SomeFrameName"
+                            and playerGui.SomeGuiName.SomeFrameName:FindFirstChild("SchoolButton") -- Replace "SchoolButton"
+
+                        if schoolButton and schoolButton:IsA("GuiButton") then
+                            print("Found School UI button. Simulating click.")
+                            simulateClick(schoolButton)
+                        else
+                            warn("Could not find School UI button to simulate click.")
+                        end
+                    end)()
+
+                else
+                    warn("Action: Could not teleport to School - Character or target not found for School Task.")
+                     print("Target Path Check:")
+                     print("workspace.StaticMap:", staticMap)
+                     if staticMap then
+                         print("workspace.StaticMap.Town:", staticMap:FindFirstChild("Town"))
+                         if staticMap:FindFirstChild("Town") then
+                             print("workspace.StaticMap.Town.School:", staticMap.Town:FindFirstChild("School"))
+                             if staticMap.Town.School:FindFirstChild("TeleportTarget") then
+                                 print("workspace.StaticMap.Town.School.TeleportTarget:", staticMap.Town.School:FindFirstChild("TeleportTarget"))
+                             end
+                         end
+                     end
+                end
+            end)()
+
+        end -- End of action checks
+    else
+        print("No action defined for Image ID:", imageId)
+    end
+end
+
+-- Function to create a single UI entry for an ailment icon
+local function createIconAndButtonEntry(imageId) -- Now takes only imageId
+    -- Find the action info in the map using the image ID
+    local actionInfo = actionMap[imageId]
+    if not actionInfo then
+        -- This should ideally not happen if findAilmentIcons is filtered by actionMap
+        warn("Attempted to create entry for Image ID", imageId, "not found in actionMap. Skipping.")
+        return nil
+    end
+
+    local label = actionInfo.label -- Get the label from the map
+    -- print("Attempting to create entry for:", label, "with Image ID:", imageId) -- Debug
+
+    local iconSize = 28
+    local entryHeight = iconSize + 6
+
+    local frame = Instance.new("Frame")
+    -- Use the Image ID directly in the name for easier lookup later
+    frame.Name = "AilmentEntry_" .. imageId:gsub("rbxassetid://", ""):gsub("[^%w%s]", "_") -- Sanitize for instance name, keep part of ID
+    frame.Size = UDim2.new(1, 0, 0, entryHeight)
+    frame.BackgroundTransparency = 1
+
+    local imageLabel = Instance.new("ImageLabel")
+    imageLabel.Size = UDim2.new(0, iconSize, 0, iconSize)
+    imageLabel.Position = UDim2.new(0, 0, 0, (entryHeight - iconSize) / 2)
+    imageLabel.BackgroundTransparency = 1
+    imageLabel.Image = imageId
+    imageLabel.ScaleType = Enum.ScaleType.Fit
+    imageLabel.Parent = frame
+    -- print("Created ImageLabel for", label) -- Debug
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 190, 0, iconSize)
+    btn.Position = UDim2.new(0, iconSize + 4, 0, (entryHeight - iconSize) / 2)
+    btn.BackgroundColor3 = Color3.new(0.4, 0.4, 0.4)
+    btn.BackgroundTransparency = 0.1
+    btn.BorderSizePixel = 0
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.TextSize = 12
+    btn.Font = Enum.Font.SourceSans
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Text = label -- Use the label from actionInfo
+    btn.Name = imageId -- **Store the original image ID in the button's name** - This is crucial for lookup
+
+    btn.MouseButton1Click:Connect(function()
+        performAction(btn.Name) -- Use button.Name (the image ID)
+    end)
+
+    btn.Parent = frame
+
+    if idDisplayScroller then
+        frame.Parent = idDisplayScroller
+        -- print("Parented frame for", label, "to scroller:", idDisplayScroller.Name) -- Debug
+    else
+        warn("idDisplayScroller is nil, cannot parent frame for", label)
+        frame:Destroy()
+        return nil
+    end
+
+     return frame
+end
+
+-- Function to refresh the list of buttons based on the game's Ailment UI
+local function refreshIDList()
+    -- print("Starting refreshIDList (scanning game UI)...") -- Commented out to reduce spam
+    if not idDisplayScroller then
+        warn("idDisplayScroller is nil. Cannot refresh list.")
+        return
+    end
+
+    local currentAilmentImageIds = findAilmentIcons() -- Get active IDs from game UI
+    local existingButtonImageIds = {}
+
+    -- 1. Collect Image IDs from our existing buttons
+    for _, entry in ipairs(idDisplayScroller:GetChildren()) do
+         -- Only process our custom entry frames
+        if entry:IsA("Frame") and string.sub(entry.Name, 1, 13) == "AilmentEntry_" then
+            local button = entry:FindFirstChildOfClass("TextButton")
+            if button then
+                local imageId = button.Name -- Get the original Image ID stored in the button's name
+                existingButtonImageIds[imageId] = entry -- Store reference to the existing entry
+            else
+                 -- Remove malformed entries that somehow lost their button
+                 print("Removing malformed entry:", entry.Name, " (missing button)")
+                 entry:Destroy()
+            end
+        -- Also destroy any non-Frame children that aren't the UIListLayout
+        elseif not entry:IsA("UIListLayout") then
+             print("Removing unexpected child from scroller:", entry.Name, " (Class:", entry.ClassName, ")")
+             entry:Destroy()
+        end
+    end
+     -- print("Found", table.getn(existingButtonImageIds), "existing buttons.") -- Debug
+
+
+    -- 2. Identify and remove buttons that no longer correspond to an active ailment
+    local removedCount = 0
+    for imageId, entry in pairs(existingButtonImageIds) do
+        if not currentAilmentImageIds[imageId] then
+            -- This button's ailment is no longer active, remove it
+            print("Removing button for inactive ailment Image ID:", imageId)
+            entry:Destroy()
+            existingButtonImageIds[imageId] = nil -- Remove from our tracking table
+            removedCount = removedCount + 1
+        end
+    end
+     -- print("Removed", removedCount, "inactive ailment buttons.") -- Debug
+
+
+    -- 3. Identify and create buttons for new active ailments
+    local addedCount = 0
+    for imageId, _ in pairs(currentAilmentImageIds) do
+        if not existingButtonImageIds[imageId] then
+            -- This active ailment doesn't have a button yet, create one
+            local newFrame = createIconAndButtonEntry(imageId)
+            if newFrame then
+                existingButtonImageIds[imageId] = newFrame -- Add to list of existing buttons
+                addedCount = addedCount + 1
+            end
+        end
+    end
+     print("Created", addedCount, "new ailment buttons.")
+
+
+    -- 4. Re-sort the remaining/new entries based on their label
+    local sortedEntries = {}
+    -- Populate the sorted list with the kept and newly created entries
+    for imageId, entry in pairs(existingButtonImageIds) do
+        table.insert(sortedEntries, entry)
+    end
+    -- print("Found", table.getn(sortedEntries), "valid entries for sorting.") -- Debug
+
+    table.sort(sortedEntries, function(a, b)
+        local buttonA = a:FindFirstChildOfClass("TextButton")
+        local buttonB = b:FindFirstChildOfClass("TextButton")
+        if buttonA and buttonB then
+            -- Use the label from actionMap for sorting
+            local labelA = actionMap[buttonA.Name] and actionMap[buttonA.Name].label or buttonA.Name
+            local labelB = actionMap[buttonB.Name] and actionMap[buttonB.Name].label or buttonB.Name
+             labelA = labelA or ""
+             labelB = labelB or ""
+            return labelA < labelB -- Alphabetical sort by Label
+        else
+            return false -- Should not happen with checks above
+        end
+    })
+    -- print("Entries sorted.") -- Debug
+
+
+    -- 5. Update LayoutOrder and CanvasSize
+    local totalHeight = 0
+    local uiListLayout = idDisplayScroller:FindFirstChild("AilmentListLayout")
+    local padding = uiListLayout and uiListLayout.Padding.Offset or 0
+
+    for _, entry in ipairs(idDisplayScroller:GetChildren()) do
+        if entry:IsA("Frame") and string.sub(entry.Name, 1, 13) == "AilmentEntry_" then
+            totalHeight = totalHeight + entry.Size.Y.Offset + padding
+        end
+    end
+
+    -- Adjust total height by subtracting the last padding
+    if #sortedEntries > 0 then
+         totalHeight = totalHeight - padding
+    end
+
+    totalHeight = totalHeight + 5 -- Add a little buffer
+
+    idDisplayScroller.CanvasSize = UDim2.new(0, 0, 0, math.max(0, totalHeight))
+    -- print("CanvasSize updated to:", idDisplayScroller.CanvasSize) -- Commented out to reduce spam
+    -- print("refreshIDList finished.") -- Commented out to reduce spam
+end
+
+-- Start a coroutine to periodically refresh the list based on the game's UI
+coroutine.wrap(function()
+    -- Wait for essential services and the player's GUI to load
+    if not localPlayer.PlayerGui then
+        localPlayer:WaitForChild("PlayerGui", 10)
+        if not localPlayer.PlayerGui then
+            warn("PlayerGui did not load. Cannot start UI refresh loop.")
+            return
+        end
+    end
+
+    -- Give the game UI a moment to load initially
+    wait(3) -- Adjust this wait time if needed
+
+    while true do
+        refreshIDList()
+        wait(2) -- Check the game UI every 2 seconds
+    end
+end)()
+
+
+-- Keep the manual refresh button (only create if debugGui exists)
+if debugGui then
+    local refreshButton = Instance.new("TextButton")
+    refreshButton.Name = "RefreshButton"
+    refreshButton.Size = UDim2.new(0, 80, 0, 25)
+    refreshButton.Position = UDim2.new(0.01, 0, 0.01, 0)
+    refreshButton.BackgroundColor3 = Color3.new(0.2, 0.6, 0.8)
+    refreshButton.TextColor3 = Color3.new(1, 1, 1)
+    refreshButton.TextSize = 14
+    refreshButton.Font = Enum.Font.SourceSansBold
+    refreshButton.Text = "Refresh"
+    refreshButton.Parent = debugGui
+
+    refreshButton.MouseButton1Click:Connect(function()
+        print("Manual Refresh triggered!")
+        refreshIDList()
+    end)
+     print("Refresh button created.")
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
 --
 loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoPtMe-/refs/heads/main/dehashwithslashinmiddle')))()
 
