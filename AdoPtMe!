@@ -5,78 +5,24 @@
 
 
 
--- Services
-local player = game:GetService("Players").LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoptMeHalloWeenUis/refs/heads/main/SocialStoneUIAdoPtMe!')))()
 
--- Control variables (global, controlled by loaded script)
-_G.DialogGUIEnabled = true
-_G.BuyItemsEnabled = true
 
--- Function to set the enabled state of the DialogApp ScreenGui
-local function setDialogAppEnabled(enabled)
-    local dialogApp = playerGui:WaitForChild("DialogApp", 60)
-    if dialogApp and dialogApp:IsA("ScreenGui") then
-        dialogApp.Enabled = enabled
-        print("DialogApp ScreenGui Enabled set to:", enabled)
-    elseif not dialogApp then
-        warn("DialogApp ScreenGui not found within the timeout!")
-    else
-        warn("Found an object at the path, but it's not a ScreenGui.")
-    end
+
+loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoPtMe-/refs/heads/main/dehashwithslashinmiddle')))()
+
+local args = {
+    "pets",
+    "moon_2025_glormy_dolphin",
+    1
+}
+
+local event = game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("SocialStonesAPI/AttemptExchange")
+
+while true do
+    event:FireServer(unpack(args))
+    wait(7) -- Wait for 7 seconds before the next iteration
 end
-
--- Function to handle the item buying loop
-local function handleItemBuying()
-    if _G.BuyItemsEnabled then
-        print("BuyItems is true. Starting the buying loop.")
-        local args = {
-            "pets",
-            "moon_2025_glormy_dolphin",
-            1
-        }
-        local event = game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("SocialStonesAPI/AttemptExchange", 60)
-        if event then
-            print("AttemptExchange RemoteEvent found.")
-            while _G.BuyItemsEnabled do
-                event:FireServer(unpack(args))
-                wait(7)
-            end
-            print("Buying loop stopped.")
-        else
-            warn("AttemptExchange RemoteEvent not found within the timeout.")
-        end
-    else
-        print("BuyItems is false. The buying loop will not start.")
-    end
-end
-
--- --- Execution Flow ---
-
--- 1. Load External Scripts (These will run regardless of your control variables)
-loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoptMeHalloWeenUis/refs/heads/main/SocialStoneUIAdoPtMe!')))() -- Show Social Stones UI
-loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoPtMe-/refs/heads/main/dehashwithslashinmiddle')))() -- dehash Remotes Required
-
--- 2. Make control variables global BEFORE loading the controlling script
-_G.DialogGUIEnabled = DialogGUI
-_G.BuyItemsEnabled = BuyItems
-
--- 3. Load the controlling script from GitHub
-loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoptMeHalloWeenUis/refs/heads/main/MoonDialogGUI')))()
-
--- 4. Control the DialogApp based on the global DialogGUIEnabled variable
-setDialogAppEnabled(_G.DialogGUIEnabled)
-
--- 5. Handle the Item Buying Logic based on the global BuyItemsEnabled variable
-handleItemBuying()
-
--- You might want to add a continuous check here if the GitHub script changes these variables dynamically
--- while true do
---     wait(1)
---     setDialogAppEnabled(_G.DialogGUIEnabled)
---     -- If the buying loop needs to be toggled on/off dynamically, you might need a different approach
---     -- For a simple start/stop, the handleItemBuying function is sufficient on initial run.
--- end
 
 
 
