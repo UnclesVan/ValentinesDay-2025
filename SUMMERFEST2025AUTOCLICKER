@@ -1,0 +1,114 @@
+-- Essential Services
+local player = game:GetService("Players").LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui", 15) -- Increased timeout for PlayerGui
+
+if not playerGui then
+    warn("PlayerGui not found after 15 seconds. Script cannot proceed.")
+    return -- Exit if PlayerGui isn't available
+end
+
+print("Script started successfully and PlayerGui found!")
+print("Script initialized. Starting continuous button finding and clicking loop.")
+
+
+-- Define the paths to the target buttons
+local dropButtonPath = "MinigameHotbarApp.Hotbar.DropButton.Button"
+local swordButtonPath = "MinigameHotbarApp.Hotbar.SwordButton.Button"
+
+-- Function to safely get a UI element with a timeout and explicit retries
+-- Returns the found instance, or nil if not found within all attempts
+local function getUIElement(base, fullPathString, timeoutPerAttempt, maxAttempts)
+    timeoutPerAttempt = timeoutPerAttempt or 0.2 -- How long to wait per attempt
+    maxAttempts = maxAttempts or 3               -- How many times to retry finding each part
+
+    local currentElement = base
+    local pathParts = string.split(fullPathString, ".")
+
+    for i, partName in ipairs(pathParts) do
+        local found = false
+        local attempts = 0
+        local elementToFind = partName
+
+        while not found and attempts < maxAttempts do
+            attempts = attempts + 1
+            local result = currentElement:WaitForChild(elementToFind, timeoutPerAttempt)
+
+            if result then
+                currentElement = result
+                found = true
+            else
+                if i == #pathParts and attempts < maxAttempts then -- Only print retry if it's the last part and not out of attempts
+                    -- print("Retrying (" .. attempts .. "/" .. maxAttempts .. ") to find '" .. elementToFind .. "' for path: " .. fullPathString)
+                elseif i == #pathParts and attempts == maxAttempts then
+                    -- warn("Failed to find '" .. elementToFind .. "' for path '" .. fullPathString .. "' after " .. maxAttempts .. " attempts.")
+                end
+            end
+        end
+
+        if not found then
+            return nil -- If any part of the path is not found after maxAttempts, return nil
+        end
+    end
+    -- We won't print "Successfully found" here, as the main loop will handle the "found hotbar button X" message.
+    return currentElement
+end
+
+
+-- Function to simulate click events
+local function clickButton(buttonInstance)
+    if buttonInstance and buttonInstance.Parent then -- Check if the button exists and is still in the game hierarchy
+        print("Attempting to click: " .. buttonInstance.Name)
+        -- Attempt to fire MouseButton1Down, MouseButton1Click, and MouseButton1Up
+        -- This sequence attempts to mimic a full user click action
+        for _, connection in pairs(getconnections(buttonInstance.MouseButton1Down)) do
+            connection:Fire()
+        end
+        wait(0.05) -- Small delay between firing events for realism
+        for _, connection in pairs(getconnections(buttonInstance.MouseButton1Click)) do
+            connection:Fire()
+        end
+        wait(0.05)
+        for _, connection in pairs(getconnections(buttonInstance.MouseButton1Up)) do
+            connection:Fire()
+        end
+        print("Successfully sent click events to: " .. buttonInstance.Name)
+    else
+        warn("Click aborted: " .. (buttonInstance and buttonInstance.Name or "nil button") .. " is not valid or removed.")
+    end
+end
+
+local actionDelay = 0.5 -- Delay in seconds between clicking DropButton and SwordButton
+local findCycleDelay = 1 -- Delay if buttons are not found in a cycle
+
+-- Main loop to continuously find and click the buttons
+while true do
+    -- --- NEW PRINTS FOR FINDING ---
+    print("finding hotbar button 1")
+    local foundDropButton = getUIElement(playerGui, dropButtonPath)
+
+    print("finding hotbar button 2")
+    local foundSwordButton = getUIElement(playerGui, swordButtonPath)
+    -- -----------------------------
+
+    if foundDropButton and foundSwordButton then
+        -- --- NEW PRINTS FOR FOUND ---
+        print("found hotbar button 1")
+        print("found hotbar button 2")
+        -- ---------------------------
+
+        -- Now that both are confirmed found, perform the clicks
+        clickButton(foundDropButton)
+        wait(actionDelay)
+
+        clickButton(foundSwordButton)
+        wait(actionDelay) -- Delay before checking again for the next cycle
+    else
+        -- If one or both buttons are not found, wait and try again
+        print("Not all buttons were found in this attempt. Retrying...")
+        wait(findCycleDelay)
+    end
+
+    wait(0.1) -- Small yield to prevent script from hogging resources
+end
+
+print("Script finished or stopped.")
