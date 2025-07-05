@@ -52,7 +52,6 @@ local SCORE_LOWER_TOLERANCE = 50
 local MAX_CONSOLE_LINES = 20
 
 -- Toggle UI Configuration
--- CHANGED: Moved down from 0.01 to 0.1
 local TOGGLE_BUTTON_POSITION = UDim2.new(0.9, 0, 0.1, 0) -- Top right (moved down)
 local TOGGLE_BUTTON_SIZE = UDim2.new(0.08, 0, 0.05, 0)
 
@@ -102,14 +101,14 @@ end
 local function logFinding(key, messageName, isFound)
     local currentTime = tick()
     if isFound then
-        if lastLogTime[key] ~= "found" then -- Check if previous state wasn't already "found"
+        if lastLogTime[key] ~= "found" then
             log(messageName .. " found!")
             lastLogTime[key] = "found"
         end
     else
-        if lastLogTime[key] == "found" then -- Transition from found to not found
+        if lastLogTime[key] == "found" then
             log(messageName .. " not found. Searching...")
-            lastLogTime[key] = currentTime -- Set timestamp for "not found" state
+            lastLogTime[key] = currentTime
         elseif not lastLogTime[key] or (currentTime - lastLogTime[key]) >= LOG_FINDING_COOLDOWN then
             log("Finding " .. messageName .. "...")
             lastLogTime[key] = currentTime
@@ -122,14 +121,12 @@ local function clickButton(button)
     if button and button.Visible and button.Active then
         log("Clicking: " .. button.Name .. " using client-side events.")
 
-        -- Improved robustness for getconnections and firing
         local function fireConnections(connections, eventName)
             if connections then
                 for _, connection in pairs(connections) do
-                    -- ADDED: More robust check using typeof to ensure it's a proper RBXScriptConnection
                     if typeof(connection) == "RBXScriptConnection" and type(connection.Fire) == "function" then
                         log("DEBUG: Attempting to fire " .. eventName .. " connection. Connection type: " .. typeof(connection) .. ", Fire method type: " .. type(connection.Fire))
-                        local success, err = pcall(connection.Fire, connection) -- Use pcall for safety
+                        local success, err = pcall(connection.Fire, connection)
                         if not success then
                             log("CRITICAL ERROR: Failed to fire " .. eventName .. " connection. Error: " .. tostring(err) .. " (Connection details: Typeof=" .. typeof(connection) .. ", FireType=" .. type(connection and connection.Fire) .. ")")
                         end
@@ -140,14 +137,12 @@ local function clickButton(button)
             end
         end
 
-        -- Wrap getconnections in pcall to catch errors directly from it
-        -- We'll explicitly check the type of result from getconnections.
         local connectionsDown = nil
         local successDown, resultDown = pcall(getconnections, button.MouseButton1Down)
         if successDown and type(resultDown) == "table" then
             connectionsDown = resultDown
         else
-            log("Error getting MouseButton1Down connections for " .. button.Name .. ": " .. tostring(resultDown) .. " (Type: " .. type(resultDown) .. ")")
+            log("Error or unexpected return from getconnections for MouseButton1Down on " .. button.Name .. ": " .. tostring(resultDown) .. " (Type: " .. type(resultDown) .. ")")
         end
         fireConnections(connectionsDown, "MouseButton1Down")
         wait(0.05)
@@ -157,7 +152,7 @@ local function clickButton(button)
         if successClick and type(resultClick) == "table" then
             connectionsClick = resultClick
         else
-            log("Error getting MouseButton1Click connections for " .. button.Name .. ": " .. tostring(resultClick) .. " (Type: " .. type(resultClick) .. ")")
+            log("Error or unexpected return from getconnections for MouseButton1Click on " .. button.Name .. ": " .. tostring(resultClick) .. " (Type: " .. type(resultClick) .. ")")
         end
         fireConnections(connectionsClick, "MouseButton1Click")
         wait(0.05)
@@ -167,7 +162,7 @@ local function clickButton(button)
         if successUp and type(resultUp) == "table" then
             connectionsUp = resultUp
         else
-            log("Error getting MouseButton1Up connections for " .. button.Name .. ": " .. tostring(resultUp) .. " (Type: " .. type(resultUp) .. ")")
+            log("Error or unexpected return from getconnections for MouseButton1Up on " .. button.Name .. ": " .. tostring(resultUp) .. " (Type: " .. type(resultUp) .. ")")
         end
         fireConnections(connectionsUp, "MouseButton1Up")
     else
@@ -187,7 +182,6 @@ local function isMinigameActive()
     end
 end
 
--- UPDATED: Handles clicking hotbar abilities with corrected button pathing
 local function handleHotbarAbilities()
     if not scoreIncreasingActionsAllowed then
         log("Hotbar abilities paused due to score control.")
@@ -196,15 +190,12 @@ local function handleHotbarAbilities()
 
     local hotbarApp = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
     if hotbarApp then
-        -- Navigate to the "Hotbar" frame
         local hotbarFrame = hotbarApp:FindFirstChild("Hotbar")
 
         if hotbarFrame then
-            -- Find the 'DropButton' container and then its child 'Button'
             local dropButtonContainer = hotbarFrame:FindFirstChild(DROP_BUTTON_NAME)
             local dropButton = dropButtonContainer and dropButtonContainer:FindFirstChild("Button")
 
-            -- Find the 'SwordButton' container and then its child 'Button'
             local swordButtonContainer = hotbarFrame:FindFirstChild(SWORD_BUTTON_NAME)
             local swordButton = swordButtonContainer and swordButtonContainer:FindFirstChild("Button")
 
@@ -215,7 +206,6 @@ local function handleHotbarAbilities()
                 logFinding("drop_button", "Drop Button (nested)", false)
             end
 
-            -- Delay after the first button click
             wait(0.1)
 
             if swordButton and swordButton.Visible and swordButton.Active then
@@ -232,10 +222,8 @@ local function handleHotbarAbilities()
     end
 end
 
-
 -- --- DYNAMIC CONTAINER FINDERS ---
 
--- Finds the CoconutBonkInterior instance which has a name like "CoconutBonkInterior::GUID"
 local function findCoconutBonkInterior()
     if not workspace.Interiors then
         logFinding("bonk_interior_base", "workspace.Interiors", false)
@@ -259,7 +247,6 @@ local function findCoconutBonkInterior()
     end
 end
 
--- This now correctly finds Game.Bins.Pets
 local function findPetsContainer()
     local bonkInterior = findCoconutBonkInterior()
     if not bonkInterior then
@@ -286,7 +273,7 @@ end
 
 local function handleTeleportToModels()
     if not scriptEnabled then return end
-    local petsContainer = findPetsContainer() -- This finds Game.Bins.Pets
+    local petsContainer = findPetsContainer()
     local character = player.Character
     local bonkInterior = findCoconutBonkInterior()
     if not bonkInterior then return end
@@ -307,12 +294,10 @@ local function handleTeleportToModels()
 
     local goldPilePosition = goldPileRoot.Position
 
-    -- Loop through all models in the Pets container
     for _, modelInPets in ipairs(petsContainer:GetChildren()) do
         local modelNameLower = modelInPets.Name:lower()
         local shouldExclude = false
 
-        -- Check for exclusion keywords
         for _, keyword in ipairs(EXCLUDED_MODEL_KEYWORDS) do
             if modelNameLower:find(keyword) then
                 shouldExclude = true
@@ -322,23 +307,21 @@ local function handleTeleportToModels()
 
         if shouldExclude then
             log("Excluding model from raider check: " .. modelInPets.Name)
-            continue -- Skip this model
+            continue
         end
 
-        -- Check if it's a valid model with a primary part or HumanoidRootPart
         if modelInPets:IsA("Model") then
             local targetPart = modelInPets.PrimaryPart or modelInPets:FindFirstChild("HumanoidRootPart")
             if targetPart and targetPart:IsA("BasePart") then
                 local distance = (targetPart.Position - goldPilePosition).magnitude
 
-                -- If the raider is within the guard radius, teleport to it
                 if distance <= GOLD_PILE_GUARD_RADIUS then
                     log("Found threat: " .. modelInPets.Name .. " within guard radius (" .. math.floor(distance) .. " studs). Teleporting to engage and face them.")
-                    local teleportPosition = targetPart.Position + Vector3.new(0, 5, 0) -- Teleport slightly above the raider
-                    local lookAtPosition = targetPart.Position -- Look directly at the raider
+                    local teleportPosition = targetPart.Position + Vector3.new(0, 5, 0)
+                    local lookAtPosition = targetPart.Position
                     character.HumanoidRootPart.CFrame = CFrame.lookAt(teleportPosition, lookAtPosition)
-                    wait(0.005) -- Slightly reduced wait time for faster response
-                    return -- Return after teleporting to the first detected raider
+                    wait(0.005)
+                    return
                 end
             end
         end
@@ -360,8 +343,8 @@ local function handleTeleportAroundGoldPile()
         for i = 1, NUM_RANDOM_GOLD_PILE_TELEPORTS do
             local randomX = math.random(-GOLD_PILE_TELEPORT_RADIUS, GOLD_PILE_TELEPORT_RADIUS)
             local randomZ = math.random(-GOLD_PILE_TELEPORT_RADIUS, GOLD_PILE_TELEPORT_RADIUS)
-            local teleportPosition = goldPileRoot.Position + Vector3.new(0, 5, 0) -- Teleport higher
-            local lookAtPosition = goldPileRoot.Position -- Look at the gold pile
+            local teleportPosition = goldPileRoot.Position + Vector3.new(0, 5, 0)
+            local lookAtPosition = goldPileRoot.Position
             table.insert(teleportTargets, CFrame.lookAt(teleportPosition, lookAtPosition))
         end
 
@@ -375,7 +358,6 @@ local function handleTeleportAroundGoldPile()
     end
 end
 
--- NEW FUNCTION: Teleports to the main "Block"
 local function handleTeleportToMainBlock()
     if not scriptEnabled then return end
     local bonkInterior = findCoconutBonkInterior()
@@ -398,7 +380,7 @@ local function handleTeleportToMainBlock()
     if mainBlock and mainBlock:IsA("BasePart") then
         logFinding("main_block", "Main Block (Visual.Steps.Block)", true)
         local teleportPosition = mainBlock.Position + Vector3.new(0, 5, 0)
-        local lookAtPosition = goldPileRoot and goldPileRoot.Position or (mainBlock.Position + mainBlock.CFrame.LookVector * 100) -- Fallback if gold pile not found
+        local lookAtPosition = goldPileRoot and goldPileRoot.Position or (mainBlock.Position + mainBlock.CFrame.LookVector * 100)
 
         log("Teleporting to main block and facing action.")
         character.HumanoidRootPart.CFrame = CFrame.lookAt(teleportPosition, lookAtPosition)
@@ -408,7 +390,6 @@ local function handleTeleportToMainBlock()
     end
 end
 
--- NEW FUNCTION: Teleports to the 6th Diamond
 local function handleTeleportToDiamonds()
     if not scriptEnabled then return end
     local bonkInterior = findCoconutBonkInterior()
@@ -439,7 +420,7 @@ local function handleTeleportToDiamonds()
                         log("Teleporting to the 6th Diamond at " .. tostring(target.Position))
 
                         local goldPileRoot = bonkInterior:FindFirstChild("Game"):FindFirstChild("GoldPile"):FindFirstChild("Root")
-                        local lookAtPosition = goldPileRoot and goldPileRoot.Position or (target.Position + target.CFrame.LookVector * 100) -- Look towards gold pile or default forward
+                        local lookAtPosition = goldPileRoot and goldPileRoot.Position or (target.Position + target.CFrame.LookVector * 100)
 
                         character.HumanoidRootPart.CFrame = CFrame.lookAt(target.Position + Vector3.new(0, 5, 0), lookAtPosition)
                         wait(0.01)
@@ -494,16 +475,15 @@ local function handleTeleportToDroppables()
         log("Returning after visiting droppables.")
         for i = 1, DROPPABLE_TELEPORT_RETURN_GOLD_TELEPORTS do
             if teleportToMainBlockActive then
-                handleTeleportToMainBlock() -- Return to main block if enabled
+                handleTeleportToMainBlock()
             elseif teleportAroundGoldActive then
-                handleTeleportAroundGoldPile() -- Otherwise return to gold pile orbit
+                handleTeleportAroundGoldPile()
             end
             wait(0.01)
         end
     end
 end
 
--- FUNCTION: Monitor score and adjust script actions
 local function checkScoreAndAdjustActions()
     if not scriptEnabled then return end
 
@@ -538,7 +518,6 @@ local function checkScoreAndAdjustActions()
     log(string.format("Current score: %d. Score increasing actions: %s", currentScore, (scoreIncreasingActionsAllowed and "ALLOWED" or "PAUSED")))
 end
 
--- FUNCTION: Create the simple console GUI
 local function createConsoleGUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "SimpleConsole"
@@ -547,7 +526,7 @@ local function createConsoleGUI()
     local consoleFrame = Instance.new("Frame")
     consoleFrame.Name = "ConsoleFrame"
     consoleFrame.Size = UDim2.new(0.3, 0, 0.4, 0)
-    consoleFrame.Position = UDim2.new(0.01, 0, 1 - consoleFrame.Size.Y.Scale - 0.005, 0) -- Adjusted from 0.01 to 0.005
+    consoleFrame.Position = UDim2.new(0.01, 0, 1 - consoleFrame.Size.Y.Scale - 0.005, 0)
     consoleFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
     consoleFrame.BorderSizePixel = 1
     consoleFrame.BorderColor3 = Color3.new(0.3, 0.3, 0.3)
@@ -613,7 +592,6 @@ local function createToggleButtonUI()
     scriptToggleButton = Instance.new("TextButton")
     scriptToggleButton.Name = "ToggleScriptButton"
     scriptToggleButton.Size = TOGGLE_BUTTON_SIZE
-    -- USED THE CONFIGURATION VARIABLE FOR POSITION
     scriptToggleButton.Position = TOGGLE_BUTTON_POSITION
     scriptToggleButton.Font = Enum.Font.SourceSansBold
     scriptToggleButton.FontSize = Enum.FontSize.Size18
@@ -622,68 +600,56 @@ local function createToggleButtonUI()
     scriptToggleButton.BorderColor3 = Color3.new(0.1, 0.1, 0.1)
     scriptToggleButton.Parent = screenGui
 
-    updateToggleButtonUI() -- Set initial state based on scriptEnabled = false
+    updateToggleButtonUI()
 
     scriptToggleButton.MouseButton1Click:Connect(function()
-        -- Wrap the entire handler logic in pcall for comprehensive error reporting
         local success, err = pcall(function()
-            local prevState = scriptEnabled -- Store current state before toggling
+            local prevState = scriptEnabled
             scriptEnabled = not scriptEnabled
             updateToggleButtonUI()
             log("Script Toggled: " .. (scriptEnabled and "ON" or "OFF"))
 
-            -- Teleport to CoconutBonkJoinZone.Ring when turned ON
-            if scriptEnabled and not prevState then -- Check if script was just turned from OFF to ON
+            if scriptEnabled and not prevState then
                 log("Script just turned ON. Attempting to teleport to minigame join zone.")
 
-                local currentCharacter = nil
-                log("DEBUG: Checking player.Character: " .. tostring(player.Character) .. ", typeof(player.Character): " .. typeof(player.Character))
-
-                if player.Character then
-                    currentCharacter = player.Character
-                    log("DEBUG: currentCharacter set from player.Character.")
-                else
+                local currentCharacter = player.Character
+                -- Ensure Character is ready
+                if not currentCharacter then
                     log("DEBUG: player.Character is nil. Attempting CharacterAdded:Wait().")
                     local charAddedEvent = player.CharacterAdded
-                    log("DEBUG: player.CharacterAdded: " .. tostring(charAddedEvent) .. ", typeof(player.CharacterAdded): " .. typeof(charAddedEvent))
-
+                    -- ADDED: Check if charAddedEvent is actually an RBXScriptSignal
                     if typeof(charAddedEvent) == "RBXScriptSignal" then
                         local charWaitSuccess, charWaitResult = pcall(function()
                             return charAddedEvent:Wait()
                         end)
-
                         if charWaitSuccess then
                             currentCharacter = charWaitResult
                             log("DEBUG: currentCharacter set from CharacterAdded:Wait().")
                         else
-                            log("CRITICAL ERROR: CharacterAdded:Wait() failed! Error: " .. tostring(charWaitResult))
-                            log("Attempting to use player.Character one last time before aborting.")
-                            currentCharacter = player.Character -- Fallback just in case something changed immediately after wait
+                            log("CRITICAL ERROR: CharacterAdded:Wait() failed! Error: " .. tostring(charWaitResult) .. ". Aborting teleport.")
+                            return -- Exit if character doesn't load
                         end
                     else
-                        log("CRITICAL ERROR: player.CharacterAdded is NOT an RBXScriptSignal! Typeof: " .. typeof(charAddedEvent) .. ". Cannot use :Wait().")
-                        -- currentCharacter remains nil
+                        log("CRITICAL ERROR: player.CharacterAdded is NOT an RBXScriptSignal! Typeof: " .. typeof(charAddedEvent) .. ". Cannot use :Wait(). Aborting teleport.")
+                        return -- Exit if event is not valid
                     end
                 end
 
-                -- Check if character is still valid after potential yield or if it was initially nil
+                -- Re-check character after potential wait
                 if not currentCharacter or not currentCharacter:IsDescendantOf(workspace) then
                      log("❌ Character became invalid or missing during ON-toggle teleport sequence. Aborting teleport.")
-                     return -- Exit the handler early if character is invalid
+                     return
                 end
 
                 local currentHumanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
-                log("DEBUG: Found currentHumanoidRootPart: " .. tostring(currentHumanoidRootPart) .. ", IsA('Part'): " .. tostring(currentHumanoidRootPart and currentHumanoidRootPart:IsA("Part")))
-
-                if currentHumanoidRootPart and currentHumanoidRootPart:IsA("Part") then -- Ensure it's a Part
-                    local teleportRing = getTeleportRingInstance() -- This call should trigger its own logs
+                if currentHumanoidRootPart and currentHumanoidRootPart:IsA("BasePart") then -- Check IsA("BasePart") for safety
+                    local teleportRing = getTeleportRingInstance()
                     if teleportRing then
                         log("✅ Teleport Ring found! Teleporting to join zone...")
-
                         -- Final check for HumanoidRootPart validity immediately before CFrame assignment
-                        if currentHumanoidRootPart.Parent == currentCharacter then -- Simple check if it's still parented
+                        if currentHumanoidRootPart.Parent == currentCharacter then
                             currentHumanoidRootPart.CFrame = teleportRing.CFrame + Vector3.new(0, 5, 0)
-                            wait(0.5) -- Small wait after teleport
+                            wait(0.5)
                         else
                             log("Warning: HumanoidRootPart became invalid (e.g., unparented or destroyed) before CFrame assignment. Skipping teleport.")
                         end
@@ -694,84 +660,46 @@ local function createToggleButtonUI()
                     log("❌ HumanoidRootPart was NOT FOUND or was invalid for teleport (after character found).")
                 end
             end
-        end) -- End of pcall function
+        end)
         if not success then
             log("CRITICAL ERROR in Toggle Button Click Handler (outer pcall): " .. tostring(err))
         end
     end)
 end
 
-
 -- --- INITIAL SETUP ---
 
--- Initialize the custom console GUI
 createConsoleGUI()
--- Initialize the toggle button GUI
 createToggleButtonUI()
 
--- --- Initial Game Start Teleport and Button Click (Executes Once) ---
--- This section runs ONLY when the script is first loaded.
+-- The getQuestTeleportButton function is no longer needed after removing the initial quest click.
 
-local function getQuestTeleportButton()
-    local btn
-    local attempts = 0
-    local MAX_BUTTON_ATTEMPTS = 100 -- Max 50 seconds (100 * 0.5s)
-    log("Starting search for Quest Teleport Button (direct path)...")
-    repeat
-        -- Use FindFirstChild for each step to ensure nil checks
-        local questApp = player.PlayerGui:FindFirstChild("QuestApp")
-        local board = questApp and questApp:FindFirstChild("Board")
-        local body = board and body:FindFirstChild("Body")
-        local contents = body and body:FindFirstChild("Contents")
-        local scrollingFrame = contents and contents:FindFirstChild("ScrollingFrame")
-        -- Uses direct named child, not index, based on your provided path
-        local teleportTemplate = scrollingFrame and scrollingFrame:FindFirstChild("TeleportTemplate")
-        local teleportBody = teleportTemplate and teleportTemplate:FindFirstChild("Body")
-        local buttonFrame = teleportBody and teleportBody:FindFirstChild("ButtonFrame")
-        btn = buttonFrame and buttonFrame:FindFirstChild("Button")
-
-        if not btn then
-            log(string.format("Finding Quest Teleport Button (Attempt %d/%d). Path status: QuestApp: %s, Board: %s, Body: %s, Contents: %s, ScrollingFrame: %s, TeleportTemplate: %s, TeleportBody: %s, ButtonFrame: %s, Button: %s",
-                attempts + 1, MAX_BUTTON_ATTEMPTS,
-                tostring(questApp ~= nil), tostring(board ~= nil), tostring(body ~= nil), tostring(contents ~= nil),
-                tostring(scrollingFrame ~= nil), tostring(teleportTemplate ~= nil), tostring(teleportBody ~= nil),
-                tostring(buttonFrame ~= nil), tostring(btn ~= nil)))
-            wait(0.5)
-            attempts = attempts + 1
-        end
-    until btn or attempts > MAX_BUTTON_ATTEMPTS
-    return btn
-end
-
--- Uses the precise path for the teleport ring (lobby entrance)
 local function getTeleportRingInstance()
     local ring
     local attempts = 0
-    local MAX_RING_ATTEMPTS = 60 -- 30 seconds (60 * 0.5s)
+    local MAX_RING_ATTEMPTS = 60
     log("Starting search for Teleport Ring (using MainMap!Summerfest path)...")
     repeat
         local interiors = workspace:FindFirstChild("Interiors")
         local summerfest = interiors and interiors:FindFirstChild("MainMap!Summerfest")
         local joinZone = summerfest and summerfest:FindFirstChild("CoconutBonkJoinZone")
 
-        -- ADDED DIAGNOSTIC LOGGING FOR PRE-CALL CHECKS
         if joinZone then
             log("DEBUG: joinZone found. Typeof(joinZone): " .. typeof(joinZone))
             if typeof(joinZone) ~= "Instance" then
                  log("CRITICAL DEBUG: joinZone is not an Instance! Typeof: " .. typeof(joinZone) .. ". This is highly suspicious. Forcing joinZone to nil.")
-                 joinZone = nil -- Force it to nil so the 'and' chain breaks safely
+                 joinZone = nil
             else
                 log("DEBUG: Type of joinZone.FindFirstChild: " .. type(joinZone.FindFirstChild))
                 if type(joinZone.FindFirstChild) ~= "function" then
                     log("CRITICAL DEBUG: joinZone.FindFirstChild is NOT a function! Type: " .. type(joinZone.FindFirstChild) .. ". This indicates environment tampering. Forcing joinZone to nil.")
-                    joinZone = nil -- If FindFirstChild is not a function, setting joinZone to nil will prevent the call
+                    joinZone = nil
                 end
             end
         else
             log("DEBUG: joinZone is nil. Skipping direct FindFirstChild access.")
         end
 
-        -- Wrap the actual problematic call in pcall to catch errors from it directly
         local success, result = pcall(function()
             return joinZone and joinZone:FindFirstChild("Ring")
         end)
@@ -781,7 +709,7 @@ local function getTeleportRingInstance()
                 ". Debug Info: joinZone was: " .. tostring(joinZone) ..
                 ", typeof(joinZone): " .. typeof(joinZone) ..
                 ", type(joinZone.FindFirstChild): " .. (joinZone and type(joinZone.FindFirstChild) or "N/A (joinZone nil)"))
-            ring = nil -- Ensure ring is nil if the pcall fails
+            ring = nil
         else
             ring = result
         end
@@ -799,21 +727,9 @@ end
 
 log("--- Initial Setup Phase Started (runs once on script load) ---")
 
--- The initial setup for the Quest button and teleport still runs here
--- It's separate from the toggle-on teleport functionality
-local questButton = getQuestTeleportButton()
+-- No longer clicking the Quest button initially.
+-- The initial teleport is now handled directly by finding the Teleport Ring.
 
-if questButton then
-    log("Quest Teleport Button found! Clicking...")
-    local success, err = pcall(clickButton, questButton) -- Added pcall
-    if not success then log("Error clicking initial Quest Button: " .. tostring(err)) end
-    wait(1) -- Give game time to process the click, e.g., load new UI or teleport
-else
-    log("❌ Failed to find Quest Teleport Button after waiting. Initial quest teleport may not occur.")
-end
-
--- This teleport logic will run IF the initial setup clicks the quest button successfully
--- AND finds the ring, BUT the primary teleport on toggle ON will be more reliable.
 local currentCharacter = player.Character
 local currentHumanoidRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
 
@@ -821,9 +737,8 @@ local teleportRingInitial = getTeleportRingInstance()
 
 if teleportRingInitial and currentHumanoidRootPart then
     log("✅ Teleport Ring found for initial setup! Teleporting to join zone...")
-    -- When entering lobby, just face "forward" in world space, or use default CFrame orientation
     currentHumanoidRootPart.CFrame = teleportRingInitial.CFrame + Vector3.new(0, 5, 0)
-    wait(0.5) -- Small wait after teleport for loading
+    wait(0.5)
 else
     log("❌ Failed to find Teleport Ring or HumanoidRootPart during initial setup. Manual teleport or toggle needed.")
 end
@@ -834,45 +749,38 @@ log("--- Initial Setup Phase Complete ---")
 while true do
     if scriptEnabled then
         if isMinigameActive() then
-            -- Pcall for checkScoreAndAdjustActions, in case it fails silently
             local success, err = pcall(checkScoreAndAdjustActions)
             if not success then log("Error in checkScoreAndAdjustActions: " .. tostring(err)) end
 
-            -- Ensure start button flag is reset once minigame is confirmed active
             if hasClickedStartButton then
                 hasClickedStartButton = false
                 log("Minigame started. Resetting 'hasClickedStartButton' flag.")
             end
 
-            -- Hotbar abilities spam (controlled by hotbarSpamActive AND scoreIncreasingActionsAllowed)
             if hotbarSpamActive then
                 local success, err = pcall(handleHotbarAbilities)
                 if not success then log("Error in handleHotbarAbilities: " .. tostring(err)) end
                 wait(0.1)
             end
 
-            -- NEW: Teleport to the main "Block"
             if teleportToMainBlockActive then
                 local success, err = pcall(handleTeleportToMainBlock)
                 if not success then log("Error in handleTeleportToMainBlock: " .. tostring(err)) end
                 wait(0.05)
             end
 
-            -- NEW: Teleport to the 6th Diamond
             if teleportToDiamondsActive then
                 local success, err = pcall(handleTeleportToDiamonds)
                 if not success then log("Error in handleTeleportToDiamonds: " .. tostring(err)) end
                 wait(0.05)
             end
 
-            -- Teleport around GoldPile (now optional, default false)
             if teleportAroundGoldActive then
                 local success, err = pcall(handleTeleportAroundGoldPile)
                 if not success then log("Error in handleTeleportAroundGoldPile: " .. tostring(err)) end
                 wait(0.05)
             end
 
-            -- Occasional teleport to Droppable piles (controlled by scoreIncreasingActionsAllowed)
             if teleportToDroppablesOccasionallyActive then
                 droppableTeleportCounter = droppableTeleportCounter + 1
                 if droppableTeleportCounter >= DROPPABLE_TELEPORT_CYCLE_FREQ then
@@ -882,15 +790,13 @@ while true do
                 end
             end
 
-            -- Teleport to raiders ONLY within the guard radius of the GoldPile (always active for protection)
             if teleportToRaidersActive then
                 local success, err = pcall(handleTeleportToModels)
                 if not success then log("Error in handleTeleportToModels: " .. tostring(err)) end
-                wait(0.005) -- Very short wait to continuously check for raiders
+                wait(0.005)
             end
 
-        else -- Minigame is NOT active
-            -- Attempt to click the start button if available (runs regardless of scriptEnabled, but within overall loop)
+        else
             local treasureDefenseExplainerApp = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
             if treasureDefenseExplainerApp and treasureDefenseExplainerApp.Enabled and not hasClickedStartButton then
                 local startScreen = treasureDefenseExplainerApp:FindFirstChild("StartScreen")
@@ -898,15 +804,13 @@ while true do
                     local depthButton = startScreen:FindFirstChild("DepthButton")
                     if depthButton and depthButton.Visible and depthButton.Active then
                         log("Clicking 'DepthButton' to start the game...")
-                        local success, err = pcall(clickButton, depthButton) -- Added pcall
+                        local success, err = pcall(clickButton, depthButton)
                         if not success then log("Error clicking DepthButton: " .. tostring(err)) end
                         hasClickedStartButton = true
                     end
                 end
             end
 
-            -- Reset the flag if the explainer app is no longer present or enabled,
-            -- indicating a new game cycle might start later.
             if not treasureDefenseExplainerApp or not treasureDefenseExplainerApp.Enabled then
                 if hasClickedStartButton then
                     log("TreasureDefenseExplainerApp not active. Resetting 'hasClickedStartButton' flag.")
@@ -914,7 +818,6 @@ while true do
                 hasClickedStartButton = false
             end
 
-            -- Reset score-related pause state if minigame is inactive
             if not scoreIncreasingActionsAllowed then
                 scoreIncreasingActionsAllowed = true
                 log("Minigame inactive. Resetting score-increasing actions to ALLOWED.")
@@ -922,7 +825,6 @@ while true do
             wait(2)
         end
     else
-        -- If script is disabled by toggle, just wait
         wait(1)
     end
 
