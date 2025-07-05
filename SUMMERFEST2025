@@ -52,7 +52,8 @@ local SCORE_LOWER_TOLERANCE = 50
 local MAX_CONSOLE_LINES = 20
 
 -- Toggle UI Configuration
-local TOGGLE_BUTTON_POSITION = UDim2.new(0.9, 0, 0.01, 0) -- Top right
+-- CHANGED: Moved down from 0.01 to 0.1
+local TOGGLE_BUTTON_POSITION = UDim2.new(0.9, 0, 0.1, 0) -- Top right (moved down)
 local TOGGLE_BUTTON_SIZE = UDim2.new(0.08, 0, 0.05, 0)
 
 -- Log Finding Cooldown
@@ -612,8 +613,8 @@ local function createToggleButtonUI()
     scriptToggleButton = Instance.new("TextButton")
     scriptToggleButton.Name = "ToggleScriptButton"
     scriptToggleButton.Size = TOGGLE_BUTTON_SIZE
-    -- FIX: Changed TOGIM2.new to UDim2.new
-    scriptToggleButton.Position = UDim2.new(0.9, 0, 0.01, 0) -- Top right
+    -- USED THE CONFIGURATION VARIABLE FOR POSITION
+    scriptToggleButton.Position = TOGGLE_BUTTON_POSITION
     scriptToggleButton.Font = Enum.Font.SourceSansBold
     scriptToggleButton.FontSize = Enum.FontSize.Size18
     scriptToggleButton.TextColor3 = Color3.new(1, 1, 1)
@@ -720,7 +721,7 @@ local function getQuestTeleportButton()
         -- Use FindFirstChild for each step to ensure nil checks
         local questApp = player.PlayerGui:FindFirstChild("QuestApp")
         local board = questApp and questApp:FindFirstChild("Board")
-        local body = board and board:FindFirstChild("Body")
+        local body = board and body:FindFirstChild("Body")
         local contents = body and body:FindFirstChild("Contents")
         local scrollingFrame = contents and contents:FindFirstChild("ScrollingFrame")
         -- Uses direct named child, not index, based on your provided path
