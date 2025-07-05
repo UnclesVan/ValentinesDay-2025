@@ -672,8 +672,6 @@ end
 createConsoleGUI()
 createToggleButtonUI()
 
--- The getQuestTeleportButton function is no longer needed after removing the initial quest click.
-
 local function getTeleportRingInstance()
     local ring
     local attempts = 0
@@ -726,9 +724,6 @@ local function getTeleportRingInstance()
 end
 
 log("--- Initial Setup Phase Started (runs once on script load) ---")
-
--- No longer clicking the Quest button initially.
--- The initial teleport is now handled directly by finding the Teleport Ring.
 
 local currentCharacter = player.Character
 local currentHumanoidRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
@@ -823,6 +818,13 @@ while true do
                 log("Minigame inactive. Resetting score-increasing actions to ALLOWED.")
             end
             wait(2)
+        end
+
+        -- Anti-AFK Movement: Add a tiny, almost unnoticeable rotation
+        local currentCharacter = player.Character
+        local currentHumanoidRootPart = currentCharacter and currentCharacter:FindFirstChild("HumanoidRootPart")
+        if currentHumanoidRootPart then
+            currentHumanoidRootPart.CFrame = currentHumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(0.05), 0)
         end
     else
         wait(1)
