@@ -1,0 +1,194 @@
+-- Place this LocalScript inside StarterGui
+
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Create ScreenGui
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MinigameUI"
+screenGui.Parent = playerGui
+
+-- Main container Frame
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 800, 0, 600)
+mainFrame.Position = UDim2.new(0.5, -400, 0.5, -300)
+mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+-- Add a border glow
+local border = Instance.new("Frame")
+border.Size = UDim2.new(1, 20, 1, 20)
+border.Position = UDim2.new(0, -10, 0, -10)
+border.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+border.BorderSizePixel = 0
+border.Parent = mainFrame
+
+local glow = Instance.new("UIStroke")
+glow.Color = Color3.fromRGB(255, 255, 255)
+glow.Thickness = 4
+glow.Parent = mainFrame
+
+-- Title (this will be the draggable part)
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 50)
+titleLabel.Position = UDim2.new(0, 0, 0, 0)
+titleLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+titleLabel.Text = "Adopt Me Summer Festival 2025"
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 24
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Parent = mainFrame
+
+-- Make the whole frame draggable by the titleLabel using UserInputService
+local dragging = false
+local dragStart, startPos
+
+titleLabel.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+titleLabel.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- Utility function to create styled boxes with labels and toggle
+local function createStatBox(parent, position, size, color, labelText, valueText, hasToggle)
+    local box = Instance.new("Frame")
+    box.Size = size
+    box.Position = position
+    box.BackgroundColor3 = color
+    box.BorderSizePixel = 2
+    box.BorderColor3 = Color3.fromRGB(200, 200, 200)
+    box.Parent = parent
+
+    -- Label
+    local label = Instance.new("TextLabel")
+    label.Text = labelText
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 14
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.Size = UDim2.new(1, -10, 0, 30)
+    label.Position = UDim2.new(0, 5, 0, 5)
+    label.BackgroundTransparency = 1
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = box
+
+    -- Value Text
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Text = valueText
+    valueLabel.Font = Enum.Font.GothamBold
+    valueLabel.TextSize = 16
+    valueLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    valueLabel.Size = UDim2.new(1, -10, 0, 30)
+    valueLabel.Position = UDim2.new(0, 5, 0, 35)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+    valueLabel.Parent = box
+
+    -- Toggle button if needed
+    if hasToggle then
+        local toggle = Instance.new("TextButton")
+        toggle.Size = UDim2.new(0, 80, 0, 30)
+        toggle.Position = UDim2.new(1, -90, 0, 10)
+        toggle.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+        toggle.Text = "ON"
+        toggle.Font = Enum.Font.GothamSemibold
+        toggle.TextSize = 14
+        toggle.TextColor3 = Color3.fromRGB(0, 0, 0)
+        toggle.Parent = box
+
+        toggle.MouseButton1Click:Connect(function()
+            if toggle.Text == "ON" then
+                toggle.Text = "OFF"
+                toggle.BackgroundColor3 = Color3.fromRGB(200, 80, 80)
+            else
+                toggle.Text = "ON"
+                toggle.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+            end
+        end)
+    end
+end
+
+-- Define positions and sizes
+local boxSize = UDim2.new(0, 240, 0, 100)
+local startX = 20
+local startY = 60
+local gapX = 20
+local gapY = 20
+
+-- First Row
+createStatBox(mainFrame, UDim2.new(0, startX, 0, startY), boxSize, Color3.fromRGB(70, 130, 180),
+    "Hours Farmed", "24xx", false)
+createStatBox(mainFrame, UDim2.new(0, startX + boxSize.X.Offset + gapX, 0, startY), boxSize, Color3.fromRGB(60, 180, 75),
+    "Currency Earned", "XXX", false)
+createStatBox(mainFrame, UDim2.new(0, startX + 2*(boxSize.X.Offset + gapX), 0, startY), boxSize, Color3.fromRGB(255, 165, 0),
+    "Mingames Survived", "XXX", false)
+
+-- Second Row
+local secondRowY = startY + boxSize.Y.Offset + gapY
+createStatBox(mainFrame, UDim2.new(0, startX, 0, secondRowY), boxSize, Color3.fromRGB(255, 99, 71),
+    "Minigame Deaths", "XXX", false)
+createStatBox(mainFrame, UDim2.new(0, startX + boxSize.X.Offset + gapX, 0, secondRowY), boxSize, Color3.fromRGB(138, 43, 226),
+    "Mingame Kills", "XXX", false)
+
+-- Third Row (Toggle)
+local thirdRowY = secondRowY + boxSize.Y.Offset + gapY
+local toggleFrame = Instance.new("Frame")
+toggleFrame.Size = UDim2.new(0, 700, 0, 150)
+toggleFrame.Position = UDim2.new(0, startX, 0, thirdRowY)
+toggleFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+toggleFrame.BorderSizePixel = 0
+toggleFrame.Parent = mainFrame
+
+local toggleLabel = Instance.new("TextLabel")
+toggleLabel.Size = UDim2.new(1, 0, 0, 50)
+toggleLabel.Position = UDim2.new(0, 0, 0, 0)
+toggleLabel.BackgroundTransparency = 1
+toggleLabel.Text = "Enable Minigame"
+toggleLabel.Font = Enum.Font.GothamBold
+toggleLabel.TextSize = 20
+toggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+toggleLabel.Parent = toggleFrame
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0, 100, 0, 50)
+toggleButton.Position = UDim2.new(0, 20, 0, 60)
+toggleButton.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+toggleButton.Text = "ON"
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.TextSize = 20
+toggleButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+toggleButton.Parent = toggleFrame
+
+-- Toggle functionality
+toggleButton.MouseButton1Click:Connect(function()
+    if toggleButton.Text == "ON" then
+        toggleButton.Text = "OFF"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(200, 80, 80)
+    else
+        toggleButton.Text = "ON"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+    end
+end)
