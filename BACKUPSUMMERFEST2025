@@ -1,1 +1,779 @@
-test
+local player = game:GetService("Players").LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+
+-- Ensure character and humanoidrootpart are available from the start, with robust checks
+local character = player.Character
+local humanoidRootPart = nil
+
+if not character then
+    local success, result = pcall(function()
+        return player.CharacterAdded:Wait()
+    end)
+    if success and result then
+        character = result
+    else
+        warn("Initial character load failed or CharacterAdded:Wait() problematic: " .. tostring(result))
+    end
+end
+
+if character then
+    local success, result = pcall(function()
+        return character:WaitForChild("HumanoidRootPart", 10)
+    end)
+    if success and result then
+        humanoidRootPart = result
+    else
+        warn("Initial HumanoidRootPart load failed or WaitForChild: " .. tostring(result))
+    end
+else
+    warn("Character not available for initial HumanoidRootPart check.")
+end
+
+-- --- SCRIPT STATE ---
+local scriptEnabled = false
+local hotbarSpamActive = true
+local teleportToRaidersActive = true
+local teleportAroundGoldActive = false
+local teleportToDroppablesOccasionallyActive = true
+local teleportToMainBlockActive = true
+local teleportToDiamondsActive = true
+
+local scoreIncreasingActionsAllowed = true
+local hasClickedStartButton = false
+
+-- --- CONFIGURATION ---
+local FROSTCLAWS_HOTBAR_APP_NAME = "MinigameHotbarApp"
+local DROP_BUTTON_NAME = "DropButton"
+local SWORD_BUTTON_NAME = "SwordButton"
+local EXCLUDED_MODEL_KEYWORDS = {"parrot", "cage"}
+local COCONUT_BONK_INTERIOR_BASE_NAME = "CoconutBonkInterior"
+local GOLD_PILE_TELEPORT_RADIUS = 15
+local NUM_RANDOM_GOLD_PILE_TELEPORTS = 3
+local GOLD_PILE_GUARD_RADIUS = 30
+local DROPPABLE_TELEPORT_CYCLE_FREQ = 5
+local DROPPABLE_TELEPORT_RETURN_GOLD_TELEPORTS = 2
+local SCORE_LABEL_PATH = "MinigameInGameApp.Body.Right.Container.ValueLabel"
+local TARGET_SCORE = 1600
+local SCORE_UPPER_TOLERANCE = 50
+local SCORE_LOWER_TOLERANCE = 50
+local MAX_CONSOLE_LINES = 20
+local TOGGLE_BUTTON_POSITION = UDim2.new(0.9, 0, 0.1, 0)
+local TOGGLE_BUTTON_SIZE = UDim2.new(0.08, 0, 0.05, 0)
+local LOG_FINDING_COOLDOWN = 1
+
+-- --- INTERNAL ---
+local droppableTeleportCounter = 0
+local consoleTextLabel = nil
+local lastLogTime = {}
+
+-- --- FUNCTIONS ---
+
+local function getCharacterAndHRP()
+    local character = player.Character
+    if not character then
+        local success, result = pcall(function() return player.CharacterAdded:Wait() end)
+        if success and result then
+            character = result
+        else
+            warn("Failed to get character: " .. tostring(result))
+            return nil, nil
+        end
+    end
+
+    local hrp = nil
+    local attempts = 0
+    while attempts < 100 do
+        if character and character.Parent then
+            hrp = character:FindFirstChild("HumanoidRootPart")
+            if hrp then break end
+        end
+        wait(0.1)
+        attempts = attempts + 1
+        if not character or not character.Parent then
+            local success, result = pcall(function() return player.Character or player.CharacterAdded:Wait() end)
+            if success and result then
+                character = result
+            end
+        end
+    end
+    return character, hrp
+end
+
+local function log(message)
+    if consoleTextLabel then
+        local timestamp = os.date("%H:%M:%S", os.time())
+        local formattedMessage = "[" .. timestamp .. "] " .. tostring(message)
+
+        local currentText = consoleTextLabel.Text
+        local lines = {}
+        for line in currentText:gmatch("([^\n]*)\n?") do
+            if line ~= "" then
+                table.insert(lines, line)
+            end
+        end
+
+        table.insert(lines, formattedMessage)
+
+        if #lines > MAX_CONSOLE_LINES then
+            local startIdx = #lines - MAX_CONSOLE_LINES + 1
+            local newLines = {}
+            for i = startIdx, #lines do
+                table.insert(newLines, lines[i])
+            end
+            lines = newLines
+        end
+
+        consoleTextLabel.Text = table.concat(lines, "\n")
+    else
+        print(message)
+    end
+end
+
+local function logFinding(key, messageName, isFound)
+    local currentTime = tick()
+    if isFound then
+        if lastLogTime[key] ~= "found" then
+            log(messageName .. " found!")
+            lastLogTime[key] = "found"
+        end
+    else
+        if lastLogTime[key] == "found" then
+            log(messageName .. " not found. Searching...")
+            lastLogTime[key] = currentTime
+        elseif not lastLogTime[key] or (currentTime - lastLogTime[key]) >= LOG_FINDING_COOLDOWN then
+            log("Finding " .. messageName .. "...")
+            lastLogTime[key] = currentTime
+        end
+    end
+end
+
+local function fireConnections(connections, eventName)
+    if connections then
+        for _, conn in pairs(connections) do
+            if typeof(conn) == "RBXScriptConnection" and type(conn.Fire) == "function" then
+                local success, err = pcall(function() conn:Fire() end)
+                if not success then
+                    log("Failed to fire " .. eventName .. " connection: " .. tostring(err))
+                end
+            else
+                log("Warning: Invalid " .. eventName .. " connection. Type: " .. typeof(conn))
+            end
+        end
+    end
+end
+
+local function clickButton(button)
+    if button and button.Visible and button.Active then
+        log("Clicking: " .. button.Name)
+        local successDown, resultDown = pcall(getconnections, button.MouseButton1Down)
+        if successDown and type(resultDown) == "table" then
+            fireConnections(resultDown, "MouseButton1Down")
+        end
+        wait(0.05)
+        local successClick, resultClick = pcall(getconnections, button.MouseButton1Click)
+        if successClick and type(resultClick) == "table" then
+            fireConnections(resultClick, "MouseButton1Click")
+        end
+        wait(0.05)
+        local successUp, resultUp = pcall(getconnections, button.MouseButton1Up)
+        if successUp and type(resultUp) == "table" then
+            fireConnections(resultUp, "MouseButton1Up")
+        end
+    else
+        log("Cannot click button: " .. (button and button.Name or "nil"))
+    end
+end
+
+local function isMinigameActive()
+    local hotbarApp = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
+    if hotbarApp and hotbarApp.Enabled then
+        logFinding("minigame", "Minigame", true)
+        return true
+    else
+        logFinding("minigame", "Minigame", false)
+        return false
+    end
+end
+
+local function handleHotbarAbilities()
+    if not scoreIncreasingActionsAllowed then
+        log("Hotbar abilities paused due to score control.")
+        return
+    end
+
+    local hotbarApp = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
+    if hotbarApp then
+        local hotbarFrame = hotbarApp:FindFirstChild("Hotbar")
+        if hotbarFrame then
+            local dropBtnContainer = hotbarFrame:FindFirstChild(DROP_BUTTON_NAME)
+            local dropBtn = dropBtnContainer and dropBtnContainer:FindFirstChild("Button")
+            local swordBtnContainer = hotbarFrame:FindFirstChild(SWORD_BUTTON_NAME)
+            local swordBtn = swordBtnContainer and swordBtnContainer:FindFirstChild("Button")
+
+            if dropBtn and dropBtn.Visible and dropBtn.Active then
+                clickButton(dropBtn)
+                log("Clicked DropButton.")
+            else
+                logFinding("drop_button", "Drop Button (nested)", false)
+            end
+            wait(0.1)
+            if swordBtn and swordBtn.Visible and swordBtn.Active then
+                clickButton(swordBtn)
+                log("Clicked SwordButton.")
+            else
+                logFinding("sword_button", "Sword Button (nested)", false)
+            end
+        else
+            logFinding("hotbar_frame", "Hotbar Frame", false)
+        end
+    else
+        logFinding("hotbar_app", "Hotbar App", false)
+    end
+end
+
+local function findCoconutBonkInterior()
+    if not workspace.Interiors then
+        logFinding("bonk_interior_base", "workspace.Interiors", false)
+        return nil
+    end
+    for _, interior in ipairs(workspace.Interiors:GetChildren()) do
+        if interior.Name:find(COCONUT_BONK_INTERIOR_BASE_NAME, 1, true) then
+            logFinding("bonk_interior", "CoconutBonkInterior", true)
+            return interior
+        end
+    end
+    logFinding("bonk_interior", "CoconutBonkInterior", false)
+    return nil
+end
+
+local function findPetsContainer()
+    local interior = findCoconutBonkInterior()
+    if not interior then return nil end
+    local game = interior:FindFirstChild("Game")
+    if game then
+        local bins = game:FindFirstChild("Bins")
+        if bins then
+            local pets = bins:FindFirstChild("Pets")
+            if pets then
+                logFinding("pets_container", "Pets (Game.Bins.Pets)", true)
+                return pets
+            end
+        end
+    end
+    logFinding("pets_container", "Pets (Game.Bins.Pets)", false)
+    return nil
+end
+
+local function handleTeleportToModels()
+    if not scriptEnabled then return end
+    local petsContainer = findPetsContainer()
+    local character, hrp = getCharacterAndHRP()
+    local bonkInterior = findCoconutBonkInterior()
+    if not bonkInterior or not hrp then return end
+    local goldPileRoot = bonkInterior:FindFirstChild("Game"):FindFirstChild("GoldPile"):FindFirstChild("Root")
+    if not goldPileRoot or not goldPileRoot:IsA("BasePart") then
+        log("No valid GoldPile Root.")
+        return
+    end
+    local goldPos = goldPileRoot.Position
+
+    for _, model in ipairs(petsContainer:GetChildren()) do
+        if model:IsA("Model") then
+            local nameLower = model.Name:lower()
+            local shouldExclude = false
+            for _, keyword in ipairs(EXCLUDED_MODEL_KEYWORDS) do
+                if nameLower:find(keyword) then
+                    shouldExclude = true
+                    break
+                end
+            end
+            if not shouldExclude then
+                local targetPart = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
+                if targetPart and targetPart:IsA("BasePart") then
+                    local dist = (targetPart.Position - goldPos).magnitude
+                    if dist <= GOLD_PILE_GUARD_RADIUS then
+                        log("Threat: " .. model.Name .. " within guard radius (" .. math.floor(dist) .. " studs).")
+                        local teleportPos = targetPart.Position + Vector3.new(0, 5, 0)
+                        local lookAtPos = targetPart.Position
+                        if hrp and hrp.Parent == character then
+                            hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
+                            wait(0.005)
+                        end
+                        return
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function handleTeleportAroundGoldPile()
+    if not scriptEnabled then return end
+    local bonkInterior = findCoconutBonkInterior()
+    local character, hrp = getCharacterAndHRP()
+    if not bonkInterior or not character or not hrp then return end
+    local goldPileRoot = bonkInterior:FindFirstChild("Game"):FindFirstChild("GoldPile"):FindFirstChild("Root")
+    if not goldPileRoot or not goldPileRoot:IsA("BasePart") then return end
+    local basePos = goldPileRoot.Position
+    local targets = {}
+    for i=1, NUM_RANDOM_GOLD_PILE_TELEPORTS do
+        local randX = math.random(-GOLD_PILE_TELEPORT_RADIUS, GOLD_PILE_TELEPORT_RADIUS)
+        local randZ = math.random(-GOLD_PILE_TELEPORT_RADIUS, GOLD_PILE_TELEPORT_RADIUS)
+        local pos = basePos + Vector3.new(randX, 5, randZ)
+        table.insert(targets, CFrame.lookAt(pos, basePos))
+    end
+    for _, cf in ipairs(targets) do
+        if hrp and hrp.Parent == player.Character then
+            hrp.CFrame = cf
+            wait(0.01)
+        end
+    end
+end
+
+local function handleTeleportToMainBlock()
+    if not scriptEnabled then return end
+    local bonkInterior = findCoconutBonkInterior()
+    local character, hrp = getCharacterAndHRP()
+    if not bonkInterior or not character or not hrp then return end
+
+    local mainBlock = bonkInterior:FindFirstChild("Visual")
+    if mainBlock then
+        mainBlock = mainBlock:FindFirstChild("Steps") and mainBlock:FindFirstChild("Steps"):FindFirstChild("Block")
+    end
+
+    local goldPileRoot = bonkInterior:FindFirstChild("Game"):FindFirstChild("GoldPile"):FindFirstChild("Root")
+    if mainBlock and mainBlock:IsA("BasePart") then
+        logFinding("main_block", "Main Block (Visual.Steps.Block)", true)
+        local teleportPosition = mainBlock.Position + Vector3.new(0, 5, 0)
+        local lookAtPosition = goldPileRoot and goldPileRoot.Position or (mainBlock.Position + mainBlock.CFrame.LookVector * 100)
+        if hrp and hrp.Parent == character then
+            hrp.CFrame = CFrame.lookAt(teleportPosition, lookAtPosition)
+            wait(0.01)
+        end
+    else
+        logFinding("main_block", "Main Block (Visual.Steps.Block)", false)
+    end
+end
+
+local function handleTeleportToDiamonds()
+    if not scriptEnabled then return end
+    local bonkInterior = findCoconutBonkInterior()
+    local character, hrp = getCharacterAndHRP()
+    if not bonkInterior or not character or not hrp then return end
+
+    local compassFloor = bonkInterior:FindFirstChild("Visual")
+    if compassFloor then
+        compassFloor = compassFloor:FindFirstChild("CompassFloor")
+        if compassFloor then
+            compassFloor = compassFloor:FindFirstChild("Diamonds")
+            if compassFloor then
+                local diamondModel = compassFloor:FindFirstChild("Model")
+                if diamondModel then
+                    logFinding("diamond_model", "Diamond Model", true)
+                    local diamonds = {}
+                    for _, child in ipairs(diamondModel:GetChildren()) do
+                        if child.Name == "Diamond" and child:IsA("BasePart") then
+                            table.insert(diamonds, child)
+                        end
+                    end
+                    if #diamonds >= 6 then
+                        local target = diamonds[6]
+                        local goldRoot = bonkInterior:FindFirstChild("Game"):FindFirstChild("GoldPile"):FindFirstChild("Root")
+                        local lookAtPos = goldRoot and goldRoot.Position or (target.Position + target.CFrame.LookVector * 100)
+                        if hrp and hrp.Parent == character then
+                            hrp.CFrame = CFrame.lookAt(target.Position + Vector3.new(0,5,0), lookAtPos)
+                            wait(0.01)
+                        end
+                    else
+                        log("Less than 6 Diamonds found.")
+                    end
+                else
+                    logFinding("diamond_model", "Diamond Model", false)
+                end
+            else
+                logFinding("compass_floor_diamonds", "CompassFloor.Diamonds", false)
+            end
+        else
+            logFinding("compass_floor", "CompassFloor", false)
+        end
+    else
+        logFinding("visual_for_compass", "Visual container for CompassFloor", false)
+    end
+end
+
+local function handleTeleportToDroppables()
+    if not scriptEnabled then return end
+    if not scoreIncreasingActionsAllowed then return end
+
+    local bonkInterior = findCoconutBonkInterior()
+    local character, hrp = getCharacterAndHRP()
+    if not bonkInterior or not character or not hrp then return end
+
+    local pile1Root = bonkInterior:FindFirstChild("Game"):FindFirstChild("Droppables"):FindFirstChild("Piles"):FindFirstChild("1"):FindFirstChild("Root")
+    local pile2Root = bonkInterior:FindFirstChild("Game"):FindFirstChild("Droppables"):FindFirstChild("Piles"):FindFirstChild("2"):FindFirstChild("Root")
+
+    local droppableTargets = {}
+    if pile1Root and pile1Root:IsA("BasePart") then
+        local teleportPosition = pile1Root.Position + Vector3.new(0, 5, 0)
+        table.insert(droppableTargets, CFrame.lookAt(teleportPosition, pile1Root.Position))
+    end
+    if pile2Root and pile2Root:IsA("BasePart") then
+        local teleportPosition = pile2Root.Position + Vector3.new(0, 5, 0)
+        table.insert(droppableTargets, CFrame.lookAt(teleportPosition, pile2Root.Position))
+    end
+
+    if #droppableTargets > 0 then
+        log("Teleporting to Droppables (occasional) and facing them.")
+        for _, cf in ipairs(droppableTargets) do
+            if hrp and hrp.Parent == player.Character then
+                hrp.CFrame = cf
+                wait(0.01)
+            end
+        end
+
+        log("Returning after visiting droppables.")
+        for i = 1, DROPPABLE_TELEPORT_RETURN_GOLD_TELEPORTS do
+            if teleportToMainBlockActive then
+                handleTeleportToMainBlock()
+            elseif teleportAroundGoldActive then
+                handleTeleportAroundGoldPile()
+            end
+            wait(0.01)
+        end
+    end
+end
+
+local function checkScoreAndAdjustActions()
+    local success, valueLabel = pcall(function()
+        return playerGui:WaitForChild("MinigameInGameApp", 5)
+            :WaitForChild("Body", 5)
+            :WaitForChild("Right", 5)
+            :WaitForChild("Container", 5)
+            :WaitForChild("ValueLabel", 5)
+    end)
+
+    if not success or not valueLabel or not valueLabel:IsA("TextLabel") then
+        log("❌ ValueLabel not found or not TextLabel after waiting.")
+        return
+    end
+    logFinding("score_label", "Score ValueLabel", true)
+
+    local currentScore = tonumber(valueLabel.Text)
+    if not currentScore then
+        log("Could not parse score: " .. tostring(valueLabel.Text))
+        return
+    end
+
+    local upperThreshold = TARGET_SCORE + SCORE_UPPER_TOLERANCE
+    local lowerThreshold = TARGET_SCORE - SCORE_LOWER_TOLERANCE
+    if currentScore > upperThreshold and scoreIncreasingActionsAllowed then
+        scoreIncreasingActionsAllowed = false
+        log(string.format("Score %d > upper threshold. Pausing actions.", currentScore))
+    elseif currentScore < lowerThreshold and not scoreIncreasingActionsAllowed then
+        scoreIncreasingActionsAllowed = true
+        log(string.format("Score %d < lower threshold. Resuming actions.", currentScore))
+    end
+    log("Score: " .. currentScore)
+end
+
+-- --- GUI CREATION ---
+local function createConsoleGUI()
+    local screenGui = Instance.new("ScreenGui", playerGui)
+    screenGui.Name = "SimpleConsole"
+
+    local frame = Instance.new("Frame", screenGui)
+    frame.Name = "ConsoleFrame"
+    frame.Size = UDim2.new(0.3, 0, 0.4, 0)
+    frame.Position = UDim2.new(0.01, 0, 1 - 0.4 - 0.005, 0)
+    frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    frame.BorderSizePixel = 1
+    frame.BorderColor3 = Color3.new(0.3, 0.3, 0.3)
+    frame.Active = true
+    frame.Draggable = true
+
+    local textLabel = Instance.new("TextLabel", frame)
+    textLabel.Name = "LogTextLabel"
+    textLabel.Size = UDim2.new(1, -10, 1, -30)
+    textLabel.Position = UDim2.new(0, 5, 0, 25)
+    textLabel.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    textLabel.TextColor3 = Color3.new(1, 1, 1)
+    textLabel.TextXAlignment = Enum.TextXAlignment.Left
+    textLabel.TextYAlignment = Enum.TextYAlignment.Top
+    textLabel.TextWrapped = true
+    textLabel.Font = Enum.Font.Code
+    textLabel.FontSize = Enum.FontSize.Size14
+    textLabel.Text = "Console Log:\n"
+    consoleTextLabel = textLabel
+
+    local closeBtn = Instance.new("TextButton", frame)
+    closeBtn.Name = "CloseButton"
+    closeBtn.Size = UDim2.new(0, 50, 0, 20)
+    closeBtn.Position = UDim2.new(1, -55, 0, 5)
+    closeBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.Text = "X"
+    closeBtn.Font = Enum.Font.SourceSansBold
+    closeBtn.FontSize = Enum.FontSize.Size18
+    closeBtn.MouseButton1Click:Connect(function()
+        screenGui:Destroy()
+        consoleTextLabel = nil
+        log("Console closed.")
+    end)
+
+    log("Console initialized.")
+end
+
+local function createToggleButtonUI()
+    local screenGui = Instance.new("ScreenGui", playerGui)
+    screenGui.Name = "ScriptToggleUI"
+
+    local btn = Instance.new("TextButton", screenGui)
+    btn.Name = "ToggleScriptButton"
+    btn.Size = UDim2.new(0, 150, 0, 30)
+    btn.Position = UDim2.new(0.9, 0, 0.1, 0)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.FontSize = Enum.FontSize.Size18
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.BorderSizePixel = 1
+    btn.BorderColor3 = Color3.new(0.1, 0.1, 0.1)
+
+    local function updateUI()
+        if scriptEnabled then
+            btn.Text = "Script: ON"
+            btn.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2)
+        else
+            btn.Text = "Script: OFF"
+            btn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
+        end
+    end
+
+    updateUI()
+
+    local function toggleScript()
+        local prevState = scriptEnabled
+        scriptEnabled = not scriptEnabled
+        updateUI()
+        log("Script: " .. (scriptEnabled and "ON" or "OFF"))
+        if scriptEnabled and not prevState then
+            -- Teleport immediately on toggle ON
+            local character, hrp = getCharacterAndHRP()
+            local ring = getTeleportRingInstance()
+            if ring and hrp and hrp.Parent == character then
+                local success, err = pcall(function()
+                    hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0)
+                end)
+                if not success then
+                    warn("Teleport on toggle failed: " .. tostring(err))
+                else
+                    wait(0.5)
+                end
+            else
+                warn("Could not teleport: ring or HRP missing")
+            end
+        end
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        toggleScript()
+    end)
+end
+
+-- --- INITIALIZATION ---
+createConsoleGUI()
+createToggleButtonUI()
+
+-- --- GET TELEPORT RING ---
+local function getTeleportRingInstance()
+    local ring
+    local attempts = 0
+    local MAX_RING_ATTEMPTS = 60
+    print("Starting search for Teleport Ring...")
+    repeat
+        local interiors = workspace:FindFirstChild("Interiors")
+        local summerfest = interiors and interiors:FindFirstChild("MainMap!Summerfest")
+        local joinZone = summerfest and summerfest:FindFirstChild("CoconutBonkJoinZone")
+        if joinZone then
+            log("DEBUG: joinZone found. Typeof(joinZone): " .. typeof(joinZone))
+            if typeof(joinZone) ~= "Instance" then
+                log("CRITICAL DEBUG: joinZone is not an Instance! Typeof: " .. typeof(joinZone))
+                joinZone = nil
+            else
+                log("DEBUG: Type of joinZone.FindFirstChild: " .. type(joinZone.FindFirstChild))
+                if type(joinZone.FindFirstChild) ~= "function" then
+                    log("CRITICAL DEBUG: joinZone.FindFirstChild is NOT a function! Forcing nil.")
+                    joinZone = nil
+                end
+            end
+        else
+            log("DEBUG: joinZone is nil.")
+        end
+        local success, result = pcall(function() return joinZone and joinZone:FindFirstChild("Ring") end)
+        if success then
+            ring = result
+            if ring then
+                print("Found ring at attempt: " .. attempts)
+                break
+            end
+        else
+            print("Error during getTeleportRingInstance: " .. tostring(result))
+        end
+        wait(0.5)
+        attempts = attempts + 1
+    until ring or attempts >= MAX_RING_ATTEMPTS
+    if not ring then
+        warn("Failed to find Teleport Ring after maximum attempts.")
+    end
+    return ring
+end
+
+-- --- INITIAL TELEPORT ON LOAD ---
+local function initialTeleport()
+    local character, hrp = getCharacterAndHRP()
+    local ring = getTeleportRingInstance()
+    if ring and hrp and hrp.Parent == character then
+        local success, err = pcall(function()
+            hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0)
+        end)
+        if not success then
+            warn("Initial teleport failed: " .. tostring(err))
+        else
+            wait(0.5)
+        end
+    else
+        warn("No valid ring or HRP for initial teleport.")
+    end
+end
+
+initialTeleport()
+
+-- --- MAIN LOOP ---
+while true do
+    if scriptEnabled then
+        if isMinigameActive() then
+            local ok, err = pcall(checkScoreAndAdjustActions)
+            if not ok then warn("Error in checkScoreAndAdjustActions: " .. tostring(err)) end
+
+            -- handle start button
+            local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
+            if tda and tda.Enabled then
+                local startScreen = tda:FindFirstChild("StartScreen")
+                if startScreen and startScreen.Visible then
+                    local depthBtn = startScreen:FindFirstChild("DepthButton")
+                    if depthBtn and depthBtn.Visible and depthBtn.Active then
+                        local success, err = pcall(clickButton, depthBtn)
+                        if not success then warn("Error clicking DepthButton: " .. tostring(err)) end
+                        hasClickedStartButton = true
+                    end
+                end
+            end
+            if not (playerGui:FindFirstChild("TreasureDefenseExplainerApp") and playerGui.TreasureDefenseExplainerApp.Enabled) then
+                hasClickedStartButton = false
+            end
+
+            if hotbarSpamActive then
+                local ok, err = pcall(handleHotbarAbilities)
+                if not ok then warn("Error in handleHotbarAbilities: " .. tostring(err)) end
+                wait(0.1)
+            end
+
+            if teleportToMainBlockActive then
+                local ok, err = pcall(handleTeleportToMainBlock)
+                if not ok then warn("Error in handleTeleportToMainBlock: " .. tostring(err)) end
+                wait(0.05)
+            end
+
+            if teleportToDiamondsActive then
+                local ok, err = pcall(handleTeleportToDiamonds)
+                if not ok then warn("Error in handleTeleportToDiamonds: " .. tostring(err)) end
+                wait(0.05)
+            end
+
+            if teleportAroundGoldActive then
+                local ok, err = pcall(handleTeleportAroundGoldPile)
+                if not ok then warn("Error in handleTeleportAroundGoldPile: " .. tostring(err)) end
+                wait(0.05)
+            end
+
+            if teleportToDroppablesOccasionallyActive then
+                droppableTeleportCounter = droppableTeleportCounter + 1
+                if droppableTeleportCounter >= DROPPABLE_TELEPORT_CYCLE_FREQ then
+                    local ok, err = pcall(handleTeleportToDroppables)
+                    if not ok then warn("Error in handleTeleportToDroppables: " .. tostring(err)) end
+                    droppableTeleportCounter = 0
+                end
+            end
+
+            if teleportToRaidersActive then
+                local ok, err = pcall(handleTeleportToModels)
+                if not ok then warn("Error in handleTeleportToModels: " .. tostring(err)) end
+                wait(0.005)
+            end
+        else
+            -- Not in minigame: handle start button again if needed
+            local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
+            if tda and tda.Enabled then
+                local startScreen = tda:FindFirstChild("StartScreen")
+                if startScreen and startScreen.Visible then
+                    local depthBtn = startScreen:FindFirstChild("DepthButton")
+                    if depthBtn and depthBtn.Visible and depthBtn.Active then
+                        local success, err = pcall(clickButton, depthBtn)
+                        if not success then warn("Error clicking DepthButton: " .. tostring(err)) end
+                        hasClickedStartButton = true
+                    end
+                end
+            end
+            if not (playerGui:FindFirstChild("TreasureDefenseExplainerApp") and playerGui.TreasureDefenseExplainerApp.Enabled) then
+                hasClickedStartButton = false
+            end
+            if not scoreIncreasingActionsAllowed then
+                scoreIncreasingActionsAllowed = true
+                log("Minigame inactive, resetting score actions.")
+            end
+            wait(2)
+        end
+
+        -- --- Anti-AFK noticeable rotation and movement ---
+        local currentCharacter, hrp = getCharacterAndHRP()
+        if hrp then
+            local success, err = pcall(function()
+                -- Generate a random axis
+                local axisX = math.random(-1, 1)
+                local axisY = math.random(-1, 1)
+                local axisZ = math.random(-1, 1)
+                -- Random angle between 5 and 20 degrees (~0.087 to 0.349 radians)
+                local angleDeg = math.random(5, 20)
+                local angleRad = math.rad(angleDeg)
+                -- Normalize axis
+                local axisLen = math.sqrt(axisX^2 + axisY^2 + axisZ^2)
+                if axisLen > 0 then
+                    axisX, axisY, axisZ = axisX/axisLen, axisY/axisLen, axisZ/axisLen
+                else
+                    axisX, axisY, axisZ = 0, 1, 0 -- fallback axis
+                end
+                local rotationCFrame = CFrame.fromAxisAngle(Vector3.new(axisX, axisY, axisZ), angleRad)
+                -- Random small positional shift
+                local shiftX = math.random(-0.2, 0.2)
+                local shiftY = math.random(-0.2, 0.2)
+                local shiftZ = math.random(-0.2, 0.2)
+                local shiftVec = Vector3.new(shiftX, shiftY, shiftZ)
+                -- Randomly choose to rotate, shift, or both
+                local actionType = math.random(1,3)
+                if actionType == 1 then
+                    hrp.CFrame = hrp.CFrame * rotationCFrame
+                elseif actionType == 2 then
+                    hrp.CFrame = hrp.CFrame * CFrame.new(shiftVec)
+                else
+                    hrp.CFrame = hrp.CFrame * rotationCFrame * CFrame.new(shiftVec)
+                end
+            end)
+            if not success then
+                warn("Enhanced movement error: " .. tostring(err))
+            end
+        end
+    else
+        wait(1)
+    end
+    wait(0.01)
+end
