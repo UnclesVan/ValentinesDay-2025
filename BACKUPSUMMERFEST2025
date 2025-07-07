@@ -1,3 +1,27 @@
+--[[
+  Roblox Game Automation Script (Focused on Raider Teleportation)
+
+  This script automates specific actions within a Roblox minigame, now
+  primarily focused on:
+  - Hotbar ability usage (Drop and Sword buttons).
+  - Score monitoring and action adjustment.
+  - **Teleportation ONLY to "raider" models (excluding "parrot" and "cage")
+    within the game's designated Pets container.**
+  - Anti-AFK movement.
+  - In-game console for logging.
+  - Toggle UI to enable/disable the script.
+
+  How to use:
+  1. Open your Roblox Studio project.
+  2. In the Explorer window, navigate to 'StarterPlayer' -> 'StarterCharacterScripts'.
+  3. Right-click on 'StarterCharacterScripts' and select 'Insert Object' -> 'Script'.
+  4. Copy and paste the entire code below into the script.
+  5. Run your game in Roblox Studio (F5 or Play button).
+  6. **Crucially, open the "Output" window (View -> Output) in Roblox Studio**
+     and observe the messages to understand what the script is doing.
+     Also, look for the "Script: ON/OFF" toggle button and the console window.
+--]]
+
 local player = game:GetService("Players").LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local workspace = game:GetService("Workspace")
@@ -34,11 +58,7 @@ end
 -- --- SCRIPT STATE ---
 local scriptEnabled = false
 local hotbarSpamActive = true
-local teleportToRaidersActive = true
-local teleportAroundGoldActive = false
-local teleportToDroppablesOccasionallyActive = true
-local teleportToMainBlockActive = true
-local teleportToDiamondsActive = true
+local teleportToRaidersActive = true -- ONLY THIS TELEPORT IS ACTIVE
 
 local scoreIncreasingActionsAllowed = true
 local hasClickedStartButton = false
@@ -47,13 +67,9 @@ local hasClickedStartButton = false
 local FROSTCLAWS_HOTBAR_APP_NAME = "MinigameHotbarApp"
 local DROP_BUTTON_NAME = "DropButton"
 local SWORD_BUTTON_NAME = "SwordButton"
-local EXCLUDED_MODEL_KEYWORDS = {"parrot", "cage"}
+local EXCLUDED_MODEL_KEYWORDS = {"parrot", "cage"} -- Models to exclude from teleportation
 local COCONUT_BONK_INTERIOR_BASE_NAME = "CoconutBonkInterior"
-local GOLD_PILE_TELEPORT_RADIUS = 15
-local NUM_RANDOM_GOLD_PILE_TELEPORTS = 3
-local GOLD_PILE_GUARD_RADIUS = 30
-local DROPPABLE_TELEPORT_CYCLE_FREQ = 5
-local DROPPABLE_TELEPORT_RETURN_GOLD_TELEPORTS = 2
+local GOLD_PILE_GUARD_RADIUS = 30 -- Radius around GoldPile to detect raiders
 local SCORE_LABEL_PATH = "MinigameInGameApp.Body.Right.Container.ValueLabel"
 local TARGET_SCORE = 1600
 local SCORE_UPPER_TOLERANCE = 50
@@ -64,41 +80,40 @@ local TOGGLE_BUTTON_SIZE = UDim2.new(0.08, 0, 0.05, 0)
 local LOG_FINDING_COOLDOWN = 1
 
 -- --- INTERNAL ---
-local droppableTeleportCounter = 0
 local consoleTextLabel = nil
 local lastLogTime = {}
 
 -- --- FUNCTIONS ---
 
 local function getCharacterAndHRP()
-    local character = player.Character
-    if not character then
+    local currentCharacter = player.Character
+    if not currentCharacter then
         local success, result = pcall(function() return player.CharacterAdded:Wait() end)
         if success and result then
-            character = result
+            currentCharacter = result
         else
             warn("Failed to get character: " .. tostring(result))
             return nil, nil
         end
     end
 
-    local hrp = nil
+    local currentHrp = nil
     local attempts = 0
     while attempts < 100 do
-        if character and character.Parent then
-            hrp = character:FindFirstChild("HumanoidRootPart")
-            if hrp then break end
+        if currentCharacter and currentCharacter.Parent then
+            currentHrp = currentCharacter:FindFirstChild("HumanoidRootPart")
+            if currentHrp then break end
         end
         wait(0.1)
         attempts = attempts + 1
-        if not character or not character.Parent then
+        if not currentCharacter or not currentCharacter.Parent then
             local success, result = pcall(function() return player.Character or player.CharacterAdded:Wait() end)
             if success and result then
-                character = result
+                currentCharacter = result
             end
         end
     end
-    return character, hrp
+    return currentCharacter, currentHrp
 end
 
 local function log(message)
@@ -112,19 +127,13 @@ local function log(message)
             if line ~= "" then
                 table.insert(lines, line)
             end
+        -- Limit lines to prevent console overflow
+        if #lines > MAX_CONSOLE_LINES then
+            table.remove(lines, 1) -- Remove oldest line
+        end
         end
 
         table.insert(lines, formattedMessage)
-
-        if #lines > MAX_CONSOLE_LINES then
-            local startIdx = #lines - MAX_CONSOLE_LINES + 1
-            local newLines = {}
-            for i = startIdx, #lines do
-                table.insert(newLines, lines[i])
-            end
-            lines = newLines
-        end
-
         consoleTextLabel.Text = table.concat(lines, "\n")
     else
         print(message)
@@ -251,9 +260,9 @@ end
 local function findPetsContainer()
     local interior = findCoconutBonkInterior()
     if not interior then return nil end
-    local game = interior:FindFirstChild("Game")
-    if game then
-        local bins = game:FindFirstChild("Bins")
+    local gameFolder = interior:FindFirstChild("Game")
+    if gameFolder then
+        local bins = gameFolder:FindFirstChild("Bins")
         if bins then
             local pets = bins:FindFirstChild("Pets")
             if pets then
@@ -272,9 +281,10 @@ local function handleTeleportToModels()
     local character, hrp = getCharacterAndHRP()
     local bonkInterior = findCoconutBonkInterior()
     if not bonkInterior or not hrp then return end
-    local goldPileRoot = bonkInterior:FindFirstChild("Game"):FindFirstChild("GoldPile"):FindFirstChild("Root")
+    local gameFolder = bonkInterior:FindFirstChild("Game")
+    local goldPileRoot = gameFolder and gameFolder:FindFirstChild("GoldPile") and gameFolder.GoldPile:FindFirstChild("Root")
     if not goldPileRoot or not goldPileRoot:IsA("BasePart") then
-        log("No valid GoldPile Root.")
+        log("No valid GoldPile Root for raider detection.")
         return
     end
     local goldPos = goldPileRoot.Position
@@ -294,156 +304,24 @@ local function handleTeleportToModels()
                 if targetPart and targetPart:IsA("BasePart") then
                     local dist = (targetPart.Position - goldPos).magnitude
                     if dist <= GOLD_PILE_GUARD_RADIUS then
-                        log("Threat: " .. model.Name .. " within guard radius (" .. math.floor(dist) .. " studs).")
-                        local teleportPos = targetPart.Position + Vector3.new(0, 5, 0)
-                        local lookAtPos = targetPart.Position
+                        log("Threat: " .. model.Name .. " within guard radius (" .. math.floor(dist) .. " studs). Teleporting.")
+                        local teleportPos = targetPart.Position + Vector3.new(0, 5, 0) -- Teleport slightly above
+                        local lookAtPos = targetPart.Position -- Look at the raider's position
                         if hrp and hrp.Parent == character then
                             hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
-                            wait(0.005)
+                            wait(0.005) -- Small wait after teleport
                         end
+                        -- We teleport to the first detected raider and then return to let the loop continue
+                        -- This ensures we only teleport to one raider per call, then re-evaluate.
                         return
                     end
                 end
             end
         end
     end
+    log("No raiders found within guard radius.")
 end
 
-local function handleTeleportAroundGoldPile()
-    if not scriptEnabled then return end
-    local bonkInterior = findCoconutBonkInterior()
-    local character, hrp = getCharacterAndHRP()
-    if not bonkInterior or not character or not hrp then return end
-    local goldPileRoot = bonkInterior:FindFirstChild("Game"):FindFirstChild("GoldPile"):FindFirstChild("Root")
-    if not goldPileRoot or not goldPileRoot:IsA("BasePart") then return end
-    local basePos = goldPileRoot.Position
-    local targets = {}
-    for i=1, NUM_RANDOM_GOLD_PILE_TELEPORTS do
-        local randX = math.random(-GOLD_PILE_TELEPORT_RADIUS, GOLD_PILE_TELEPORT_RADIUS)
-        local randZ = math.random(-GOLD_PILE_TELEPORT_RADIUS, GOLD_PILE_TELEPORT_RADIUS)
-        local pos = basePos + Vector3.new(randX, 5, randZ)
-        table.insert(targets, CFrame.lookAt(pos, basePos))
-    end
-    for _, cf in ipairs(targets) do
-        if hrp and hrp.Parent == player.Character then
-            hrp.CFrame = cf
-            wait(0.01)
-        end
-    end
-end
-
-local function handleTeleportToMainBlock()
-    if not scriptEnabled then return end
-    local bonkInterior = findCoconutBonkInterior()
-    local character, hrp = getCharacterAndHRP()
-    if not bonkInterior or not character or not hrp then return end
-
-    local mainBlock = bonkInterior:FindFirstChild("Visual")
-    if mainBlock then
-        mainBlock = mainBlock:FindFirstChild("Steps") and mainBlock:FindFirstChild("Steps"):FindFirstChild("Block")
-    end
-
-    local goldPileRoot = bonkInterior:FindFirstChild("Game"):FindFirstChild("GoldPile"):FindFirstChild("Root")
-    if mainBlock and mainBlock:IsA("BasePart") then
-        logFinding("main_block", "Main Block (Visual.Steps.Block)", true)
-        local teleportPosition = mainBlock.Position + Vector3.new(0, 5, 0)
-        local lookAtPosition = goldPileRoot and goldPileRoot.Position or (mainBlock.Position + mainBlock.CFrame.LookVector * 100)
-        if hrp and hrp.Parent == character then
-            hrp.CFrame = CFrame.lookAt(teleportPosition, lookAtPosition)
-            wait(0.01)
-        end
-    else
-        logFinding("main_block", "Main Block (Visual.Steps.Block)", false)
-    end
-end
-
-local function handleTeleportToDiamonds()
-    if not scriptEnabled then return end
-    local bonkInterior = findCoconutBonkInterior()
-    local character, hrp = getCharacterAndHRP()
-    if not bonkInterior or not character or not hrp then return end
-
-    local compassFloor = bonkInterior:FindFirstChild("Visual")
-    if compassFloor then
-        compassFloor = compassFloor:FindFirstChild("CompassFloor")
-        if compassFloor then
-            compassFloor = compassFloor:FindFirstChild("Diamonds")
-            if compassFloor then
-                local diamondModel = compassFloor:FindFirstChild("Model")
-                if diamondModel then
-                    logFinding("diamond_model", "Diamond Model", true)
-                    local diamonds = {}
-                    for _, child in ipairs(diamondModel:GetChildren()) do
-                        if child.Name == "Diamond" and child:IsA("BasePart") then
-                            table.insert(diamonds, child)
-                        end
-                    end
-                    if #diamonds >= 6 then
-                        local target = diamonds[6]
-                        local goldRoot = bonkInterior:FindFirstChild("Game"):FindFirstChild("GoldPile"):FindFirstChild("Root")
-                        local lookAtPos = goldRoot and goldRoot.Position or (target.Position + target.CFrame.LookVector * 100)
-                        if hrp and hrp.Parent == character then
-                            hrp.CFrame = CFrame.lookAt(target.Position + Vector3.new(0,5,0), lookAtPos)
-                            wait(0.01)
-                        end
-                    else
-                        log("Less than 6 Diamonds found.")
-                    end
-                else
-                    logFinding("diamond_model", "Diamond Model", false)
-                end
-            else
-                logFinding("compass_floor_diamonds", "CompassFloor.Diamonds", false)
-            end
-        else
-            logFinding("compass_floor", "CompassFloor", false)
-        end
-    else
-        logFinding("visual_for_compass", "Visual container for CompassFloor", false)
-    end
-end
-
-local function handleTeleportToDroppables()
-    if not scriptEnabled then return end
-    if not scoreIncreasingActionsAllowed then return end
-
-    local bonkInterior = findCoconutBonkInterior()
-    local character, hrp = getCharacterAndHRP()
-    if not bonkInterior or not character or not hrp then return end
-
-    local pile1Root = bonkInterior:FindFirstChild("Game"):FindFirstChild("Droppables"):FindFirstChild("Piles"):FindFirstChild("1"):FindFirstChild("Root")
-    local pile2Root = bonkInterior:FindFirstChild("Game"):FindFirstChild("Droppables"):FindFirstChild("Piles"):FindFirstChild("2"):FindFirstChild("Root")
-
-    local droppableTargets = {}
-    if pile1Root and pile1Root:IsA("BasePart") then
-        local teleportPosition = pile1Root.Position + Vector3.new(0, 5, 0)
-        table.insert(droppableTargets, CFrame.lookAt(teleportPosition, pile1Root.Position))
-    end
-    if pile2Root and pile2Root:IsA("BasePart") then
-        local teleportPosition = pile2Root.Position + Vector3.new(0, 5, 0)
-        table.insert(droppableTargets, CFrame.lookAt(teleportPosition, pile2Root.Position))
-    end
-
-    if #droppableTargets > 0 then
-        log("Teleporting to Droppables (occasional) and facing them.")
-        for _, cf in ipairs(droppableTargets) do
-            if hrp and hrp.Parent == player.Character then
-                hrp.CFrame = cf
-                wait(0.01)
-            end
-        end
-
-        log("Returning after visiting droppables.")
-        for i = 1, DROPPABLE_TELEPORT_RETURN_GOLD_TELEPORTS do
-            if teleportToMainBlockActive then
-                handleTeleportToMainBlock()
-            elseif teleportAroundGoldActive then
-                handleTeleportAroundGoldPile()
-            end
-            wait(0.01)
-        end
-    end
-end
 
 local function checkScoreAndAdjustActions()
     local success, valueLabel = pcall(function()
@@ -678,38 +556,13 @@ while true do
                 wait(0.1)
             end
 
-            if teleportToMainBlockActive then
-                local ok, err = pcall(handleTeleportToMainBlock)
-                if not ok then warn("Error in handleTeleportToMainBlock: " .. tostring(err)) end
-                wait(0.05)
-            end
-
-            if teleportToDiamondsActive then
-                local ok, err = pcall(handleTeleportToDiamonds)
-                if not ok then warn("Error in handleTeleportToDiamonds: " .. tostring(err)) end
-                wait(0.05)
-            end
-
-            if teleportAroundGoldActive then
-                local ok, err = pcall(handleTeleportAroundGoldPile)
-                if not ok then warn("Error in handleTeleportAroundGoldPile: " .. tostring(err)) end
-                wait(0.05)
-            end
-
-            if teleportToDroppablesOccasionallyActive then
-                droppableTeleportCounter = droppableTeleportCounter + 1
-                if droppableTeleportCounter >= DROPPABLE_TELEPORT_CYCLE_FREQ then
-                    local ok, err = pcall(handleTeleportToDroppables)
-                    if not ok then warn("Error in handleTeleportToDroppables: " .. tostring(err)) end
-                    droppableTeleportCounter = 0
-                end
-            end
-
+            -- Only teleport to raiders
             if teleportToRaidersActive then
                 local ok, err = pcall(handleTeleportToModels)
                 if not ok then warn("Error in handleTeleportToModels: " .. tostring(err)) end
-                wait(0.005)
+                wait(0.005) -- Keep a small wait to prevent excessive teleport calls
             end
+
         else
             -- Not in minigame: handle start button again if needed
             local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
