@@ -1,28 +1,9 @@
---[[
-  Roblox Game Automation Script (Focused on Raider Teleportation)
+-- Full Script with correct order and consolidated UI and game logic
 
-  This script automates specific actions within a Roblox minigame, now
-  primarily focused on:
-  - Hotbar ability usage (Drop and Sword buttons).
-  - Score monitoring and action adjustment.
-  - **Teleportation ONLY to "raider" models (excluding "parrot" and "cage")
-    within the game's designated Pets container.**
-  - Anti-AFK movement.
-  - In-game console for logging.
-  - Toggle UI to enable/disable the script.
+print("Script Version: 2025-07-07_ConsolidatedUIAndLogic_v64")
 
-  How to use:
-  1. Open your Roblox Studio project.
-  2. In the Explorer window, navigate to 'StarterPlayer' -> 'StarterCharacterScripts'.
-  3. Right-click on 'StarterCharacterScripts' and select 'Insert Object' -> 'Script'.
-  4. Copy and paste the entire code below into the script.
-  5. Run your game in Roblox Studio (F5 or Play button).
-  6. **Crucially, open the "Output" window (View -> Output) in Roblox Studio**
-     and observe the messages to understand what the script is doing.
-     Also, look for the "Script: ON/OFF" toggle button and the console window.
---]]
-
-local player = game:GetService("Players").LocalPlayer
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
@@ -31,60 +12,38 @@ local UserInputService = game:GetService("UserInputService")
 local character = player.Character
 local humanoidRootPart = nil
 
-if not character then
-    local success, result = pcall(function()
-        return player.CharacterAdded:Wait()
-    end)
-    if success and result then
-        character = result
-    else
-        warn("Initial character load failed or CharacterAdded:Wait() problematic: " .. tostring(result))
-    end
-end
-
-if character then
-    local success, result = pcall(function()
-        return character:WaitForChild("HumanoidRootPart", 10)
-    end)
-    if success and result then
-        humanoidRootPart = result
-    else
-        warn("Initial HumanoidRootPart load failed or WaitForChild: " .. tostring(result))
-    end
-else
-    warn("Character not available for initial HumanoidRootPart check.")
-end
-
 -- --- SCRIPT STATE ---
-local scriptEnabled = false
-local hotbarSpamActive = true
-local teleportToRaidersActive = true -- ONLY THIS TELEPORT IS ACTIVE
-
+local scriptEnabled = false -- Controls the main script loop
+local hotbarSpamActive = true -- Example feature state (controlled by scriptEnabled's main loop)
+local teleportToRaidersActive = true -- ONLY THIS TELEPORT IS ACTIVE (controlled by scriptEnabled's main loop)
 local scoreIncreasingActionsAllowed = true
 local hasClickedStartButton = false
+local autoCloseRewardActive = false -- New: State for auto close reward toggle
+local autoClickHotbarActive = false -- New: State for auto click hotbar toggle
+local rewardsAutoClickActive = false -- State for auto click rewards button
 
 -- --- CONFIGURATION ---
 local FROSTCLAWS_HOTBAR_APP_NAME = "MinigameHotbarApp"
 local DROP_BUTTON_NAME = "DropButton"
-local SWORD_BUTTON_NAME = "SwordButton"
+local SWORD_BUTTON_NAME = "SwordButton" -- Corrected from Sword_Button based on your later script
 local EXCLUDED_MODEL_KEYWORDS = {"parrot", "cage"} -- Models to exclude from teleportation
 local COCONUT_BONK_INTERIOR_BASE_NAME = "CoconutBonkInterior"
 local GOLD_PILE_GUARD_RADIUS = 30 -- Radius around GoldPile to detect raiders
-local SCORE_LABEL_PATH = "MinigameInGameApp.Body.Right.Container.ValueLabel"
 local TARGET_SCORE = 1600
 local SCORE_UPPER_TOLERANCE = 50
 local SCORE_LOWER_TOLERANCE = 50
 local MAX_CONSOLE_LINES = 20
-local TOGGLE_BUTTON_POSITION = UDim2.new(0.9, 0, 0.1, 0)
-local TOGGLE_BUTTON_SIZE = UDim2.new(0.08, 0, 0.05, 0)
 local LOG_FINDING_COOLDOWN = 1
+local REWARDS_BUTTON_PATH = "MinigameRewardsApp.Body.Button" -- Path to the rewards button
 
 -- --- INTERNAL ---
-local consoleTextLabel = nil
-local lastLogTime = {}
+local consoleTextLabel = nil -- Reference to the TextLabel for logging
+local lastLogTime = {} -- For logFinding cooldowns
+local findingMinigameCoroutine = nil -- To manage the "finding minigame..." loop
 
 -- --- FUNCTIONS ---
 
+-- Robust function to get character and HumanoidRootPart
 local function getCharacterAndHRP()
     local currentCharacter = player.Character
     if not currentCharacter then
@@ -99,14 +58,15 @@ local function getCharacterAndHRP()
 
     local currentHrp = nil
     local attempts = 0
-    while attempts < 100 do
+    while attempts < 100 do -- Try for up to 10 seconds
         if currentCharacter and currentCharacter.Parent then
             currentHrp = currentCharacter:FindFirstChild("HumanoidRootPart")
             if currentHrp then break end
         end
-        wait(0.1)
+        task.wait(0.1)
         attempts = attempts + 1
         if not currentCharacter or not currentCharacter.Parent then
+            -- Re-attempt to get character if it disappears
             local success, result = pcall(function() return player.Character or player.CharacterAdded:Wait() end)
             if success and result then
                 currentCharacter = result
@@ -116,30 +76,48 @@ local function getCharacterAndHRP()
     return currentCharacter, currentHrp
 end
 
-local function log(message)
+-- Utility function for logging to the console UI (now global)
+function log(message, debugTag)
     if consoleTextLabel then
-        local timestamp = os.date("%H:%M:%S", os.time())
-        local formattedMessage = "[" .. timestamp .. "] " .. tostring(message)
-
-        local currentText = consoleTextLabel.Text
-        local lines = {}
-        for line in currentText:gmatch("([^\n]*)\n?") do
-            if line ~= "" then
-                table.insert(lines, line)
+        local success, err = pcall(function()
+            local timestamp = os.date("%H:%M:%S", os.time())
+            local formattedMessage = "[" .. timestamp .. "] " .. tostring(message)
+            if debugTag then
+                formattedMessage = formattedMessage .. " " .. debugTag
             end
-        -- Limit lines to prevent console overflow
-        if #lines > MAX_CONSOLE_LINES then
-            table.remove(lines, 1) -- Remove oldest line
-        end
-        end
 
-        table.insert(lines, formattedMessage)
-        consoleTextLabel.Text = table.concat(lines, "\n")
+            local currentText = consoleTextLabel.Text
+            local lines = {}
+            -- Split by newline, handling empty lines correctly
+            for line in currentText:gmatch("([^\n]*)\n?") do
+                if line ~= "" then
+                    table.insert(lines, line)
+                end
+            end
+
+            -- Limit lines to prevent console overflow
+            if #lines >= MAX_CONSOLE_LINES then
+                table.remove(lines, 1) -- Remove oldest line
+            end
+
+            table.insert(lines, formattedMessage)
+            consoleTextLabel.Text = table.concat(lines, "\n")
+            -- Auto-scroll to bottom
+            local textScroller = consoleTextLabel.Parent
+            if textScroller and textScroller:IsA("ScrollingFrame") then
+                textScroller.CanvasPosition = Vector2.new(0, textScroller.CanvasSize.Y.Offset - textScroller.AbsoluteSize.Y)
+            end
+        end)
+        if not success then
+            warn("Error writing to consoleTextLabel: " .. tostring(err))
+            print(message) -- Fallback to Roblox output if UI write fails
+        end
     else
-        print(message)
+        print(message) -- Fallback to Roblox output if console UI not ready
     end
 end
 
+-- Log function with cooldown for "finding" messages (now uses global log)
 local function logFinding(key, messageName, isFound)
     local currentTime = tick()
     if isFound then
@@ -158,6 +136,7 @@ local function logFinding(key, messageName, isFound)
     end
 end
 
+-- Fires connections for a given RBXScriptSignal (now uses global log)
 local function fireConnections(connections, eventName)
     if connections then
         for _, conn in pairs(connections) do
@@ -173,42 +152,84 @@ local function fireConnections(connections, eventName)
     end
 end
 
+-- Simulates a button click (general purpose, now uses global log)
 local function clickButton(button)
     if button and button.Visible and button.Active then
         log("Clicking: " .. button.Name)
-        local successDown, resultDown = pcall(getconnections, button.MouseButton1Down)
+        local successDown, resultDown = pcall(function() return getconnections(button.MouseButton1Down) end)
         if successDown and type(resultDown) == "table" then
             fireConnections(resultDown, "MouseButton1Down")
         end
-        wait(0.05)
-        local successClick, resultClick = pcall(getconnections, button.MouseButton1Click)
+        task.wait(0.05)
+        local successClick, resultClick = pcall(function() return getconnections(button.MouseButton1Click) end)
         if successClick and type(resultClick) == "table" then
             fireConnections(resultClick, "MouseButton1Click")
         end
-        wait(0.05)
-        local successUp, resultUp = pcall(getconnections, button.MouseButton1Up)
+        task.wait(0.05)
+        local successUp, resultUp = pcall(function() return getconnections(button.MouseButton1Up) end)
         if successUp and type(resultUp) == "table" then
             fireConnections(resultUp, "MouseButton1Up")
         end
     else
-        log("Cannot click button: " .. (button and button.Name or "nil"))
+        warn("Cannot click button: " .. (button and button.Name or "nil") .. ". Not visible or active.")
     end
 end
 
+-- NEW: Specific click logic for Auto Close Reward button, as provided by user (now uses global log)
+local function fireSpecificClickEvents(buttonInstance)
+    if buttonInstance and buttonInstance:IsA("GuiButton") and buttonInstance.Parent then -- Check if it's a valid GuiButton and still exists
+        -- Attempt to fire MouseButton1Down, MouseButton1Click, and MouseButton1Up
+        -- This sequence attempts to mimic a full user click action
+        local success, connectionsDown = pcall(function() return getconnections(buttonInstance.MouseButton1Down) end)
+        if success and type(connectionsDown) == "table" then
+            for _, connection in pairs(connectionsDown) do
+                pcall(function() connection:Fire() end) -- Wrap in pcall for safety
+            end
+        end
+        task.wait(0.05) -- Small delay between firing events for realism
+        local success, connectionsClick = pcall(function() return getconnections(buttonInstance.MouseButton1Click) end)
+        if success and type(connectionsClick) == "table" then
+            for _, connection in pairs(connectionsClick) do
+                pcall(function() connection:Fire() end) -- Wrap in pcall for safety
+            end
+        end
+        task.wait(0.05)
+        local success, connectionsUp = pcall(function() return getconnections(buttonInstance.MouseButton1Up) end)
+        if success and type(connectionsUp) == "table" then
+            for _, connection in pairs(connectionsUp) do
+                pcall(function() connection:Fire() end) -- Wrap in pcall for safety
+            end
+        end
+        log("Successfully sent click events to: " .. buttonInstance.Name)
+    else
+        warn("Click aborted: " .. (buttonInstance and buttonInstance.Name or "nil button") .. " is not valid or removed.")
+    end
+end
+
+
+-- Checks if the minigame is currently active based on the hotbar UI (now uses global log)
 local function isMinigameActive()
     local hotbarApp = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
-    if hotbarApp and hotbarApp.Enabled then
-        logFinding("minigame", "Minigame", true)
-        return true
+    if hotbarApp then
+        log("DEBUG: Found MinigameHotbarApp. Enabled: " .. tostring(hotbarApp.Enabled))
+        if hotbarApp.Enabled then
+            logFinding("minigame", "Minigame", true)
+            return true
+        else
+            logFinding("minigame", "Minigame", false)
+            return false
+        end
     else
+        log("DEBUG: MinigameHotbarApp not found.")
         logFinding("minigame", "Minigame", false)
         return false
     end
 end
 
+-- Handles clicking of hotbar abilities (Drop and Sword, now uses global log)
 local function handleHotbarAbilities()
     if not scoreIncreasingActionsAllowed then
-        log("Hotbar abilities paused due to score control.")
+        log("Hotbar abilities paused due0to score control.")
         return
     end
 
@@ -227,7 +248,7 @@ local function handleHotbarAbilities()
             else
                 logFinding("drop_button", "Drop Button (nested)", false)
             end
-            wait(0.1)
+            task.wait(0.1)
             if swordBtn and swordBtn.Visible and swordBtn.Active then
                 clickButton(swordBtn)
                 log("Clicked SwordButton.")
@@ -242,6 +263,7 @@ local function handleHotbarAbilities()
     end
 end
 
+-- Finds the CoconutBonkInterior instance (now uses global log)
 local function findCoconutBonkInterior()
     if not workspace.Interiors then
         logFinding("bonk_interior_base", "workspace.Interiors", false)
@@ -257,6 +279,7 @@ local function findCoconutBonkInterior()
     return nil
 end
 
+-- Finds the Pets container within the minigame interior (now uses global log)
 local function findPetsContainer()
     local interior = findCoconutBonkInterior()
     if not interior then return nil end
@@ -275,12 +298,18 @@ local function findPetsContainer()
     return nil
 end
 
+-- Handles teleportation to "raider" models (excluding specific keywords, now uses global log)
 local function handleTeleportToModels()
-    if not scriptEnabled then return end
+    if not scriptEnabled or not teleportToRaidersActive then return end -- Ensure this feature is enabled
     local petsContainer = findPetsContainer()
-    local character, hrp = getCharacterAndHRP()
+    local currentCharacter, hrp = getCharacterAndHRP()
     local bonkInterior = findCoconutBonkInterior()
-    if not bonkInterior or not hrp then return end
+
+    if not petsContainer or not bonkInterior or not hrp or not hrp.Parent == currentCharacter then
+        log("Teleport conditions not met (petsContainer, bonkInterior, or HRP missing).")
+        return
+    end
+
     local gameFolder = bonkInterior:FindFirstChild("Game")
     local goldPileRoot = gameFolder and gameFolder:FindFirstChild("GoldPile") and gameFolder.GoldPile:FindFirstChild("Root")
     if not goldPileRoot or not goldPileRoot:IsA("BasePart") then
@@ -307,9 +336,10 @@ local function handleTeleportToModels()
                         log("Threat: " .. model.Name .. " within guard radius (" .. math.floor(dist) .. " studs). Teleporting.")
                         local teleportPos = targetPart.Position + Vector3.new(0, 5, 0) -- Teleport slightly above
                         local lookAtPos = targetPart.Position -- Look at the raider's position
-                        if hrp and hrp.Parent == character then
+                        -- Ensure HRP is still valid before teleporting
+                        if hrp and hrp.Parent == currentCharacter then
                             hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
-                            wait(0.005) -- Small wait after teleport
+                            task.wait(0.005) -- Small wait after teleport
                         end
                         -- We teleport to the first detected raider and then return to let the loop continue
                         -- This ensures we only teleport to one raider per call, then re-evaluate.
@@ -322,7 +352,7 @@ local function handleTeleportToModels()
     log("No raiders found within guard radius.")
 end
 
-
+-- Checks the current score and adjusts `scoreIncreasingActionsAllowed` (now uses global log)
 local function checkScoreAndAdjustActions()
     local success, valueLabel = pcall(function()
         return playerGui:WaitForChild("MinigameInGameApp", 5)
@@ -334,6 +364,7 @@ local function checkScoreAndAdjustActions()
 
     if not success or not valueLabel or not valueLabel:IsA("TextLabel") then
         log("❌ ValueLabel not found or not TextLabel after waiting.")
+        scoreIncreasingActionsAllowed = true -- Default to allowed if score cannot be read
         return
     end
     logFinding("score_label", "Score ValueLabel", true)
@@ -341,163 +372,48 @@ local function checkScoreAndAdjustActions()
     local currentScore = tonumber(valueLabel.Text)
     if not currentScore then
         log("Could not parse score: " .. tostring(valueLabel.Text))
+        scoreIncreasingActionsAllowed = true -- Default to allowed if score cannot be parsed
         return
     end
 
     local upperThreshold = TARGET_SCORE + SCORE_UPPER_TOLERANCE
     local lowerThreshold = TARGET_SCORE - SCORE_LOWER_TOLERANCE
+
     if currentScore > upperThreshold and scoreIncreasingActionsAllowed then
         scoreIncreasingActionsAllowed = false
-        log(string.format("Score %d > upper threshold. Pausing actions.", currentScore))
+        log(string.format("Score %d > upper threshold (%d). Pausing actions.", currentScore, upperThreshold))
     elseif currentScore < lowerThreshold and not scoreIncreasingActionsAllowed then
         scoreIncreasingActionsAllowed = true
-        log(string.format("Score %d < lower threshold. Resuming actions.", currentScore))
+        log(string.format("Score %d < lower threshold (%d). Resuming actions.", currentScore, lowerThreshold))
     end
-    log("Score: " .. currentScore)
+    log("Current Score: " .. currentScore)
 end
 
--- --- GUI CREATION ---
-local function createConsoleGUI()
-    local screenGui = Instance.new("ScreenGui", playerGui)
-    screenGui.Name = "SimpleConsole"
-
-    local frame = Instance.new("Frame", screenGui)
-    frame.Name = "ConsoleFrame"
-    frame.Size = UDim2.new(0.3, 0, 0.4, 0)
-    frame.Position = UDim2.new(0.01, 0, 1 - 0.4 - 0.005, 0)
-    frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
-    frame.BorderSizePixel = 1
-    frame.BorderColor3 = Color3.new(0.3, 0.3, 0.3)
-    frame.Active = true
-    frame.Draggable = true
-
-    local textLabel = Instance.new("TextLabel", frame)
-    textLabel.Name = "LogTextLabel"
-    textLabel.Size = UDim2.new(1, -10, 1, -30)
-    textLabel.Position = UDim2.new(0, 5, 0, 25)
-    textLabel.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
-    textLabel.TextColor3 = Color3.new(1, 1, 1)
-    textLabel.TextXAlignment = Enum.TextXAlignment.Left
-    textLabel.TextYAlignment = Enum.TextYAlignment.Top
-    textLabel.TextWrapped = true
-    textLabel.Font = Enum.Font.Code
-    textLabel.FontSize = Enum.FontSize.Size14
-    textLabel.Text = "Console Log:\n"
-    consoleTextLabel = textLabel
-
-    local closeBtn = Instance.new("TextButton", frame)
-    closeBtn.Name = "CloseButton"
-    closeBtn.Size = UDim2.new(0, 50, 0, 20)
-    closeBtn.Position = UDim2.new(1, -55, 0, 5)
-    closeBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
-    closeBtn.TextColor3 = Color3.new(1, 1, 1)
-    closeBtn.Text = "X"
-    closeBtn.Font = Enum.Font.SourceSansBold
-    closeBtn.FontSize = Enum.FontSize.Size18
-    closeBtn.MouseButton1Click:Connect(function()
-        screenGui:Destroy()
-        consoleTextLabel = nil
-        log("Console closed.")
-    end)
-
-    log("Console initialized.")
-end
-
-local function createToggleButtonUI()
-    local screenGui = Instance.new("ScreenGui", playerGui)
-    screenGui.Name = "ScriptToggleUI"
-
-    local btn = Instance.new("TextButton", screenGui)
-    btn.Name = "ToggleScriptButton"
-    btn.Size = UDim2.new(0, 150, 0, 30)
-    btn.Position = UDim2.new(0.9, 0, 0.1, 0)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.FontSize = Enum.FontSize.Size18
-    btn.TextColor3 = Color3.new(1, 1, 1)
-    btn.BorderSizePixel = 1
-    btn.BorderColor3 = Color3.new(0.1, 0.1, 0.1)
-
-    local function updateUI()
-        if scriptEnabled then
-            btn.Text = "Script: ON"
-            btn.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2)
-        else
-            btn.Text = "Script: OFF"
-            btn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
-        end
-    end
-
-    updateUI()
-
-    local function toggleScript()
-        local prevState = scriptEnabled
-        scriptEnabled = not scriptEnabled
-        updateUI()
-        log("Script: " .. (scriptEnabled and "ON" or "OFF"))
-        if scriptEnabled and not prevState then
-            -- Teleport immediately on toggle ON
-            local character, hrp = getCharacterAndHRP()
-            local ring = getTeleportRingInstance()
-            if ring and hrp and hrp.Parent == character then
-                local success, err = pcall(function()
-                    hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0)
-                end)
-                if not success then
-                    warn("Teleport on toggle failed: " .. tostring(err))
-                else
-                    wait(0.5)
-                end
-            else
-                warn("Could not teleport: ring or HRP missing")
-            end
-        end
-    end
-
-    btn.MouseButton1Click:Connect(function()
-        toggleScript()
-    end)
-end
-
--- --- INITIALIZATION ---
-createConsoleGUI()
-createToggleButtonUI()
-
--- --- GET TELEPORT RING ---
+-- Gets the teleport ring instance for initial teleport (now uses global log)
 local function getTeleportRingInstance()
     local ring
     local attempts = 0
-    local MAX_RING_ATTEMPTS = 60
-    print("Starting search for Teleport Ring...")
+    local MAX_RING_ATTEMPTS = 60 -- Max attempts (30 seconds)
+    log("Starting search for Teleport Ring...")
     repeat
         local interiors = workspace:FindFirstChild("Interiors")
         local summerfest = interiors and interiors:FindFirstChild("MainMap!Summerfest")
         local joinZone = summerfest and summerfest:FindFirstChild("CoconutBonkJoinZone")
-        if joinZone then
-            log("DEBUG: joinZone found. Typeof(joinZone): " .. typeof(joinZone))
-            if typeof(joinZone) ~= "Instance" then
-                log("CRITICAL DEBUG: joinZone is not an Instance! Typeof: " .. typeof(joinZone))
-                joinZone = nil
-            else
-                log("DEBUG: Type of joinZone.FindFirstChild: " .. type(joinZone.FindFirstChild))
-                if type(joinZone.FindFirstChild) ~= "function" then
-                    log("CRITICAL DEBUG: joinZone.FindFirstChild is NOT a function! Forcing nil.")
-                    joinZone = nil
+        if joinZone and typeof(joinZone) == "Instance" and type(joinZone.FindFirstChild) == "function" then
+            local success, result = pcall(function() return joinZone:FindFirstChild("Ring") end)
+            if success then
+                ring = result
+                if ring then
+                    log("Found Teleport Ring at attempt: " .. attempts)
+                    break
                 end
+            else
+                log("Error during getTeleportRingInstance: " .. tostring(result))
             end
         else
-            log("DEBUG: joinZone is nil.")
+            logFinding("join_zone", "CoconutBonkJoinZone", false)
         end
-        local success, result = pcall(function() return joinZone and joinZone:FindFirstChild("Ring") end)
-        if success then
-            ring = result
-            if ring then
-                print("Found ring at attempt: " .. attempts)
-                break
-            end
-        else
-            print("Error during getTeleportRingInstance: " .. tostring(result))
-        end
-        wait(0.5)
+        task.wait(0.5)
         attempts = attempts + 1
     until ring or attempts >= MAX_RING_ATTEMPTS
     if not ring then
@@ -506,34 +422,481 @@ local function getTeleportRingInstance()
     return ring
 end
 
--- --- INITIAL TELEPORT ON LOAD ---
+-- Performs an initial teleport to the game's entry point (now uses global log)
 local function initialTeleport()
-    local character, hrp = getCharacterAndHRP()
+    local currentCharacter, hrp = getCharacterAndHRP()
     local ring = getTeleportRingInstance()
-    if ring and hrp and hrp.Parent == character then
+    if ring and hrp and hrp.Parent == currentCharacter then
         local success, err = pcall(function()
-            hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0)
+            hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0) -- Teleport slightly above the ring
         end)
         if not success then
             warn("Initial teleport failed: " .. tostring(err))
         else
-            wait(0.5)
+            log("Initial teleport successful.")
+            task.wait(0.5)
         end
     else
-        warn("No valid ring or HRP for initial teleport.")
+        warn("No valid ring or HRP for initial teleport. Skipping.")
     end
 end
 
-initialTeleport()
+-- Explicit "finding minigame" logic as requested (for the main minigame, now uses global log)
+local isFindingMinigame = false
+local function startFindingMinigame()
+    if isFindingMinigame then return end
+    isFindingMinigame = true
+    log("Starting to print 'finding minigame...' repeatedly.")
+    findingMinigameCoroutine = coroutine.wrap(function()
+        while isFindingMinigame do
+            log("finding minigame...")
+            task.wait(0.5)
+        end
+        log("'finding minigame...' printing stopped.")
+    end)
+    task.spawn(findingMinigameCoroutine)
+end
+
+local function stopFindingMinigame()
+    if isFindingMinigame then
+        isFindingMinigame = false
+        if findingMinigameCoroutine then
+            -- No explicit way to cancel a running coroutine, but the loop condition handles it.
+            findingMinigameCoroutine = nil
+        end
+        log("Stopped printing 'finding minigame...'.")
+    end
+end
+
+-- NEW: Function to handle auto close reward logic (now uses global log)
+local function handleAutoCloseReward()
+    if not autoCloseRewardActive then return end
+
+    local rewardApp = playerGui:FindFirstChild("MinigameRewardsApp")
+    if rewardApp and rewardApp.Enabled then
+        local body = rewardApp:FindFirstChild("Body")
+        if body then
+            local closeButton = body:FindFirstChild("Button") -- Assuming the button is directly named "Button"
+            if closeButton and closeButton:IsA("GuiButton") and closeButton.Visible and closeButton.Active then
+                log("Attempting to auto-close reward app.")
+                fireSpecificClickEvents(closeButton)
+            else
+                log("Reward close button not found or not active.")
+            end
+        else
+            log("MinigameRewardsApp Body not found.")
+        end
+    else
+        -- log("MinigameRewardsApp not found or not enabled.") -- Too chatty if constantly checking
+    end
+end
+
+-- NEW: Function to handle auto click hotbar logic (now uses global log)
+local function handleAutoClickHotbar()
+    if autoClickHotbarActive then
+        log("Executing Auto Click Hotbar script...")
+        local success, err = pcall(function()
+            loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/ValentinesDay-2025/refs/heads/main/SUMMERFEST2025AUTOCLICKER')))()
+        end)
+        if not success then
+            log("Error executing Auto Click Hotbar script: " .. tostring(err))
+        else
+            log("Auto Click Hotbar script executed. Note: This script, once loaded, may run independently.")
+        end
+        -- Since loadstring typically runs once to inject a script, we immediately turn off the toggle
+        -- to prevent re-execution on every loop iteration. The external script manages its own state.
+        autoClickHotbarActive = false
+        -- Update the button UI to reflect this
+        local footer = frame:FindFirstChild("Footer")
+        if footer then
+            local autoClickHotbarBtn = footer:FindFirstChild("AutoClickHotbarBtn")
+            if autoClickHotbarBtn then
+                autoClickHotbarBtn.Text = "Auto Click Hotbar: OFF"
+                autoClickHotbarBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
+            end
+        end
+    end
+end
+
+-- Custom Draggable function
+local function makeDraggable(guiElement, targetFrame)
+    local dragging = false
+    local dragStart = Vector2.new(0, 0)
+    local initialPosition = UDim2.new(0, 0, 0, 0)
+
+    guiElement.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            initialPosition = targetFrame.Position
+            -- input.Handled = true -- REMOVED: Deprecated and causes error
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragging then
+            local delta = input.Position - dragStart
+            targetFrame.Position = UDim2.new(initialPosition.X.Scale, initialPosition.X.Offset + delta.X,
+                                            initialPosition.Y.Scale, initialPosition.Y.Offset + delta.Y)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        -- Corrected the typo: Enum.UserInputType.UserInputType.MouseButton1 -> Enum.UserInputType.MouseButton1
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            dragging = false
+        end
+    end)
+end
+
+
+-- --- GUI CREATION ---
+-- This function now creates the single consolidated console UI
+local function createConsoleUI()
+    log("Creating consolidated console UI...")
+    local gui = Instance.new("ScreenGui", playerGui)
+    gui.Name = "MainConsole"
+
+    local frame = Instance.new("Frame", gui)
+    frame.Size = UDim2.new(0.6, 0, 0.5, 0) -- Adjusted size to be smaller
+    frame.Position = UDim2.new(0.2, 0, 0.25, 0) -- Adjusted position to keep it centered
+    frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    frame.BorderSizePixel = 2
+    frame.BorderColor3 = Color3.new(1, 1, 1)
+    frame.Active = true -- Main frame active for general interaction
+
+    local header = Instance.new("Frame", frame)
+    header.Size = UDim2.new(1, 0, 0, 50)
+    header.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    header.Active = true -- Make header active to capture mouse events for dragging
+
+    -- Apply custom draggable behavior to the header, making it drag the main frame
+    makeDraggable(header, frame)
+
+
+    -- Main Script Toggle Button (far left)
+    local toggleBtn = Instance.new("TextButton", header)
+    toggleBtn.Size = UDim2.new(0, 120, 1, 0)
+    toggleBtn.Position = UDim2.new(0, 5, 0, 0) -- Positioned to the far left with 5px padding
+    toggleBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.8) -- Blue (initial state)
+    toggleBtn.Text = "Script: OFF"
+    toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.FontSize = Enum.FontSize.Size14
+    toggleBtn.TextSize = 18 -- Slightly smaller text
+
+    local function updateToggleUI()
+        if scriptEnabled then
+            toggleBtn.Text = "Script: ON"
+            toggleBtn.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2) -- Green
+        else
+            toggleBtn.Text = "Script: OFF"
+            toggleBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
+        end
+    end
+    updateToggleUI() -- Set initial state
+
+    -- Connect main script toggle button
+    toggleBtn.MouseButton1Click:Connect(function()
+        local prevState = scriptEnabled
+        scriptEnabled = not scriptEnabled
+        updateToggleUI()
+        log("Script toggled: " .. tostring(scriptEnabled))
+
+        if scriptEnabled and not prevState then
+            -- Actions to take when script is enabled
+            local currentCharacter, hrp = getCharacterAndHRP()
+            local ring = getTeleportRingInstance()
+            if ring and hrp and hrp.Parent == currentCharacter then
+                local success, err = pcall(function()
+                    hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0)
+                end)
+                if not success then
+                    warn("Teleport on toggle failed: " .. tostring(err))
+                else
+                    log("Teleported to minigame entry on script enable.")
+                    task.wait(0.5)
+                end
+            else
+                warn("Could not teleport: ring or HRP missing for initial teleport on toggle ON.")
+            end
+        else
+            -- Actions to take when script is disabled
+            scoreIncreasingActionsAllowed = true -- Reset score control on disable
+            stopFindingMinigame() -- Stop the "finding minigame" loop
+            log("All main script features deactivated.")
+        end
+    end)
+
+    -- New: Boat Teleportation Button (Coming Soon)
+    local boatTeleportBtn = Instance.new("TextButton", header)
+    -- Set a fixed size that should accommodate the text
+    boatTeleportBtn.Size = UDim2.new(0, 200, 1, 0) -- Adjusted width to fit "Boat Teleportation (Coming soon)"
+    boatTeleportBtn.Position = UDim2.new(0, toggleBtn.Position.X.Offset + toggleBtn.Size.X.Offset + 10, 0, 0)
+    boatTeleportBtn.BackgroundColor3 = Color3.new(0.5, 0.5, 0.5) -- Grayed out color
+    boatTeleportBtn.Text = "Boat Teleportation (Coming soon)"
+    boatTeleportBtn.TextColor3 = Color3.new(1, 1, 1) -- White text for contrast
+    boatTeleportBtn.Font = Enum.Font.GothamBold
+    boatTeleportBtn.FontSize = Enum.FontSize.Size14
+    boatTeleportBtn.TextSize = 18 -- Keep text size to 18
+    boatTeleportBtn.TextWrapped = true -- Allow text to wrap if it's still too long
+    -- Set TextScaled to true to automatically scale down text if it still overflows
+    boatTeleportBtn.TextScaled = true
+
+    -- Connect boat teleportation button to a "Coming soon" message
+    boatTeleportBtn.MouseButton1Click:Connect(function()
+        log("Boat Teleportation feature is coming soon!")
+    end)
+
+    -- Close Button (restored to v38 properties)
+    local closeBtn = Instance.new("TextButton", header)
+    closeBtn.Size = UDim2.new(0, 100, 1, 0)
+    closeBtn.Position = UDim2.new(1, -100, 0, 0)
+    closeBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.FontSize = Enum.FontSize.Size14
+    closeBtn.TextSize = 24
+
+    -- Connect close button
+    closeBtn.MouseButton1Click:Connect(function()
+        gui:Destroy()
+        consoleTextLabel = nil -- Clear reference
+        scriptEnabled = false -- Ensure main script is disabled on close
+        log("Main Console closed. All scripts disabled.")
+        scoreIncreasingActionsAllowed = true -- Reset score control on disable
+        stopFindingMinigame() -- Stop the "finding minigame" loop
+    end)
+
+    -- Title Label (positioned to be centered in the header, with new text)
+    local titleLabel = Instance.new("TextLabel", header)
+    titleLabel.Size = UDim2.new(1, 0, 1, 0) -- Span full width of header
+    titleLabel.Position = UDim2.new(0, 0, 0, 0) -- Top-left of header
+    titleLabel.BackgroundTransparency = 1 -- Keep background transparent
+    titleLabel.TextColor3 = Color3.new(1, 1, 1)
+    titleLabel.Text = "SummerFest 2025 Week 1" -- Renamed title
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.FontSize = Enum.FontSize.Size18
+    titleLabel.TextSize = 22
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Center -- Center text horizontally
+    titleLabel.TextYAlignment = Enum.TextYAlignment.Center -- Center text vertically
+    titleLabel.TextScaled = true -- Crucial: Scale text to fit within the label bounds
+
+    -- NEW: Content Area Frame to hold both Console Log and Changelog
+    local contentArea = Instance.new("Frame", frame)
+    contentArea.Name = "ContentArea"
+    contentArea.Size = UDim2.new(1, -10, 1, -100) -- Accounts for header (50) and footer (50) + 10px total padding
+    contentArea.Position = UDim2.new(0, 5, 0, 55) -- Below header, 5px padding left/top
+    contentArea.BackgroundTransparency = 1 -- Make it transparent
+    contentArea.BorderSizePixel = 0
+
+    -- Add UIListLayout to arrange Console Log and Changelog horizontally
+    local contentLayout = Instance.new("UIListLayout", contentArea)
+    contentLayout.FillDirection = Enum.FillDirection.Horizontal
+    contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    contentLayout.Padding = UDim.new(0, 10) -- 10 pixels padding between the two sections
+
+    -- Log area (with ScrollingFrame) - now child of contentArea
+    local logFrame = Instance.new("Frame", contentArea)
+    logFrame.Size = UDim2.new(0.5, -5, 1, 0) -- Half width of contentArea, minus 5px for padding
+    logFrame.Position = UDim2.new(0, 0, 0, 0) -- Position handled by UIListLayout
+    logFrame.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    logFrame.BorderSizePixel = 1
+    logFrame.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    logFrame.Active = false -- Make log frame inactive so it doesn't interfere with dragging
+
+    local textScroller = Instance.new("ScrollingFrame", logFrame)
+    textScroller.Size = UDim2.new(1, 0, 1, 0)
+    textScroller.CanvasSize = UDim2.new(0, 0, 0, 0) -- Will be updated dynamically by AutomaticCanvasSize
+    textScroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    textScroller.BackgroundTransparency = 1
+    textScroller.ScrollBarImageColor3 = Color3.new(0.7, 0.7, 0.7)
+    textScroller.ScrollBarThickness = 8
+
+    local logLabel = Instance.new("TextLabel", textScroller)
+    logLabel.Name = "LogTextLabel"
+    logLabel.Size = UDim2.new(1, 0, 0, 0) -- Height will adjust with AutomaticCanvasSize
+    logLabel.Position = UDim2.new(0, 0, 0, 0)
+    logLabel.BackgroundTransparency = 1
+    logLabel.TextColor3 = Color3.new(1, 1, 1)
+    logLabel.TextXAlignment = Enum.TextXAlignment.Left
+    logLabel.TextYAlignment = Enum.TextYAlignment.Top
+    logLabel.TextWrapped = true
+    logLabel.Font = Enum.Font.Code
+    logLabel.FontSize = Enum.FontSize.Size14
+    logLabel.Text = "Console Log:\n"
+    logLabel.AutomaticSize = Enum.AutomaticSize.Y -- Make label height adjust to content
+    consoleTextLabel = logLabel -- Assign to global variable
+
+    log("Console UI created.")
+    -- Add the script version to the console log immediately after creation
+    log("Script Version: 2025-07-07_ConsolidatedUIAndLogic_v64")
+
+    -- NEW: Changelog Frame
+    local changelogFrame = Instance.new("Frame", contentArea)
+    changelogFrame.Name = "ChangelogFrame"
+    changelogFrame.Size = UDim2.new(0.5, -5, 1, 0) -- Half width of contentArea, minus 5px for padding
+    changelogFrame.Position = UDim2.new(0, 0, 0, 0) -- Position handled by UIListLayout
+    changelogFrame.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    changelogFrame.BorderSizePixel = 1
+    changelogFrame.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    changelogFrame.Active = false
+
+    local changelogScroller = Instance.new("ScrollingFrame", changelogFrame)
+    changelogScroller.Size = UDim2.new(1, 0, 1, 0)
+    changelogScroller.CanvasSize = UDim2.new(0, 0, 0, 0)
+    changelogScroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    changelogScroller.BackgroundTransparency = 1
+    changelogScroller.ScrollBarImageColor3 = Color3.new(0.7, 0.7, 0.7)
+    changelogScroller.ScrollBarThickness = 8
+
+    local changelogLabel = Instance.new("TextLabel", changelogScroller)
+    changelogLabel.Name = "ChangelogTextLabel"
+    changelogLabel.Size = UDim2.new(1, 0, 0, 0)
+    changelogLabel.Position = UDim2.new(0, 0, 0, 0)
+    changelogLabel.BackgroundTransparency = 1
+    changelogLabel.TextColor3 = Color3.new(1, 1, 1)
+    changelogLabel.TextXAlignment = Enum.TextXAlignment.Left
+    changelogLabel.TextYAlignment = Enum.TextYAlignment.Top
+    changelogLabel.TextWrapped = true
+    changelogLabel.Font = Enum.Font.Code
+    changelogLabel.FontSize = Enum.FontSize.Size14
+    changelogLabel.AutomaticSize = Enum.AutomaticSize.Y
+
+    -- Changelog Content
+    changelogLabel.Text = [[
+Changelog:
+v64 (2025-07-07):
+- Adjusted console UI size to be slightly smaller as requested.
+
+v63 (2025-07-07):
+- Added dedicated Changelog section to the UI.
+- Restructured console UI to support side-by-side log and changelog.
+
+v62 (2025-07-07):
+- Removed "Auto Close Rewards" feature as requested.
+- Wrapped all `log()` and `logFinding()` calls with `pcall` for error robustness.
+
+v61 (2025-07-07):
+- Temporarily disabled external "Auto Click Hotbar" script (`loadstring`) for debugging "attempt to call a string value" error.
+- Added `pcall` wrappers around ALL `log()` and `logFinding()` calls to prevent script crashes if these functions are corrupted.
+
+v60 (2025-07-07):
+- Integrated "Rewards Button" auto-clicking functionality with a dedicated toggle button in the UI.
+- Added diagnostic print statements to check the type of `log` and `logFinding` functions at runtime.
+
+v59 (2025-07-07):
+- Fixed "attempt to call a string value" error by ensuring `logFinding` is globally accessible.
+- Corrected typo in `UserInputService.InputEnded` for draggable UI.
+
+v58 (2025-07-07):
+- Implemented "Auto Close Reward" toggle button and logic.
+- Implemented "Auto Click Hotbar" toggle button and logic (loads external script).
+
+v57 (2025-07-07):
+- Consolidated all UI elements into a single draggable console window.
+- Added main script ON/OFF toggle.
+- Added "Boat Teleportation (Coming soon)" button.
+- Improved console log display with scrolling and line limits.
+- Enhanced anti-AFK movement with random rotations and shifts.
+- Refined `getCharacterAndHRP` for better robustness.
+
+v56 (2025-07-07):
+- Fixed draggable UI getting stuck after release (removed `input.Handled = true`).
+- Initial implementation of consolidated UI framework.
+]]
+
+    -- NEW: Footer Frame for new buttons
+    local footer = Instance.new("Frame", frame)
+    footer.Name = "Footer"
+    footer.Size = UDim2.new(1, 0, 0, 50) -- Height for buttons
+    footer.Position = UDim2.new(0, 0, 1, -50) -- Position at the bottom of the main frame
+    footer.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    footer.BorderSizePixel = 0
+
+    -- Add UIListLayout to the footer for automatic alignment
+    local listLayout = Instance.new("UIListLayout", footer)
+    listLayout.FillDirection = Enum.FillDirection.Horizontal
+    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    listLayout.Padding = UDim.new(0, 10) -- 10 pixels padding between buttons
+
+    -- NEW: Auto Close Reward Toggle Button
+    local autoCloseRewardToggleBtn = Instance.new("TextButton", footer)
+    autoCloseRewardToggleBtn.Name = "AutoCloseRewardToggleBtn"
+    autoCloseRewardToggleBtn.Size = UDim2.new(0, 180, 1, 0) -- Fixed size, layout handles position
+    autoCloseRewardToggleBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red (initial OFF state)
+    autoCloseRewardToggleBtn.Text = "Auto Close Reward: OFF"
+    autoCloseRewardToggleBtn.TextColor3 = Color3.new(1, 1, 1)
+    autoCloseRewardToggleBtn.Font = Enum.Font.GothamBold
+    autoCloseRewardToggleBtn.FontSize = Enum.FontSize.Size14
+    autoCloseRewardToggleBtn.TextSize = 18
+    autoCloseRewardToggleBtn.TextScaled = true -- Ensure text fits
+
+    autoCloseRewardToggleBtn.MouseButton1Click:Connect(function()
+        autoCloseRewardActive = not autoCloseRewardActive
+        if autoCloseRewardActive then
+            autoCloseRewardToggleBtn.Text = "Auto Close Reward: ON"
+            autoCloseRewardToggleBtn.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2) -- Green
+            log("Auto Close Reward: ON")
+        else
+            autoCloseRewardToggleBtn.Text = "Auto Close Reward: OFF"
+            autoCloseRewardToggleBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
+            log("Auto Close Reward: OFF")
+        end
+    end)
+
+    -- NEW: Auto Click Hotbar Button
+    local autoClickHotbarBtn = Instance.new("TextButton", footer)
+    autoClickHotbarBtn.Name = "AutoClickHotbarBtn"
+    autoClickHotbarBtn.Size = UDim2.new(0, 180, 1, 0) -- Fixed size, layout handles position
+    autoClickHotbarBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red (initial OFF state)
+    autoClickHotbarBtn.Text = "Auto Click Hotbar: OFF"
+    autoClickHotbarBtn.TextColor3 = Color3.new(1, 1, 1)
+    autoClickHotbarBtn.Font = Enum.Font.GothamBold
+    autoClickHotbarBtn.FontSize = Enum.FontSize.Size14
+    autoClickHotbarBtn.TextSize = 18
+    autoClickHotbarBtn.TextScaled = true -- Ensure text fits
+
+    autoClickHotbarBtn.MouseButton1Click:Connect(function()
+        local prevState = autoClickHotbarActive
+        autoClickHotbarActive = not autoClickHotbarActive
+        if autoClickHotbarActive then
+            autoClickHotbarBtn.Text = "Auto Click Hotbar: ON"
+            autoClickHotbarBtn.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2) -- Green
+            log("Auto Click Hotbar: ON (Executing script...)")
+            -- Execute the loadstring immediately when turned ON
+            handleAutoClickHotbar()
+        else
+            autoClickHotbarBtn.Text = "Auto Click Hotbar: OFF"
+            autoClickHotbarBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
+            log("Auto Click Hotbar: OFF (Note: External script may continue to run if already loaded.)")
+        end
+    end)
+
+    -- Removed manual positioning as UIListLayout handles it
+end
+
+-- Initial character and HRP retrieval using the robust function
+character, humanoidRootPart = getCharacterAndHRP()
+
+-- --- INITIALIZATION ---
+createConsoleUI() -- Create the single consolidated console UI
+task.wait(0.1) -- Small wait to ensure UI elements are fully rendered and accessible
+initialTeleport() -- Perform initial teleport regardless of scriptEnabled state
 
 -- --- MAIN LOOP ---
 while true do
     if scriptEnabled then
+        -- This block runs only when the main script is enabled
         if isMinigameActive() then
+            -- Found interior
+            stopFindingMinigame() -- Stop the explicit "finding minigame" message
+
             local ok, err = pcall(checkScoreAndAdjustActions)
             if not ok then warn("Error in checkScoreAndAdjustActions: " .. tostring(err)) end
 
-            -- handle start button
+            -- Handle start button for TreasureDefenseExplainerApp
             local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
             if tda and tda.Enabled then
                 local startScreen = tda:FindFirstChild("StartScreen")
@@ -546,6 +909,7 @@ while true do
                     end
                 end
             end
+            -- Reset hasClickedStartButton if the app is no longer enabled
             if not (playerGui:FindFirstChild("TreasureDefenseExplainerApp") and playerGui.TreasureDefenseExplainerApp.Enabled) then
                 hasClickedStartButton = false
             end
@@ -553,18 +917,26 @@ while true do
             if hotbarSpamActive then
                 local ok, err = pcall(handleHotbarAbilities)
                 if not ok then warn("Error in handleHotbarAbilities: " .. tostring(err)) end
-                wait(0.1)
+                task.wait(0.1)
             end
 
-            -- Only teleport to raiders
+            -- Only teleport to raiders if active
             if teleportToRaidersActive then
                 local ok, err = pcall(handleTeleportToModels)
                 if not ok then warn("Error in handleTeleportToModels: " .. tostring(err)) end
-                wait(0.005) -- Keep a small wait to prevent excessive teleport calls
+                task.wait(0.005) -- Keep a small wait to prevent excessive teleport calls
             end
 
+            -- NEW: Call auto close reward handler
+            local ok, err = pcall(handleAutoCloseReward)
+            if not ok then warn("Error in handleAutoCloseReward: " .. tostring(err)) end
+
         else
-            -- Not in minigame: handle start button again if needed
+            -- Not in minigame
+            log("DEBUG: Main loop: Minigame is NOT active. Calling startFindingMinigame().")
+            startFindingMinigame() -- Start the explicit "finding minigame" message
+
+            -- Handle start button again if needed (as it's outside the minigame active check in your logic)
             local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
             if tda and tda.Enabled then
                 local startScreen = tda:FindFirstChild("StartScreen")
@@ -584,7 +956,7 @@ while true do
                 scoreIncreasingActionsAllowed = true
                 log("Minigame inactive, resetting score actions.")
             end
-            wait(2)
+            task.wait(2) -- Wait longer when minigame is not active
         end
 
         -- --- Anti-AFK noticeable rotation and movement ---
@@ -626,7 +998,9 @@ while true do
             end
         end
     else
-        wait(1)
+        -- When main script is disabled, ensure "finding minigame" is stopped
+        stopFindingMinigame()
+        task.wait(1) -- Wait longer when script is not active to reduce CPU usage
     end
-    wait(0.01)
+    task.wait(0.01) -- Small wait for the main loop iteration
 end
