@@ -1,0 +1,1276 @@
+--[[
+  Roblox Game Automation Script (Enhanced UI Debugging) v28
+
+  This script combines a custom console UI with comprehensive automation features,
+  including:
+  - Hotbar ability usage (Drop and Sword buttons).
+  - Score monitoring and action adjustment.
+  - Raider teleportation to protect the GoldPile.
+  - Anti-AFK movement.
+  - In-game console for logging and control.
+  - Integrated Noclip (automatic when script is ON, conditional on minigame found).
+  - Integrated Floating (manual toggle with 'O' key, uses BodyPosition for stability).
+  - Customized logging for "bonkinterior" to include minigame status and timer.
+  - Automated dynamic teleportation cycle (stair/diamond logic, active when script is ON).
+  - Single initial teleport to the Ring on script load.
+  - Removed corrective teleport to Ring upon minigame start (as per user request).
+  - **Enhanced debugging for UI button event connections, specifically for MouseButton1Click.**
+  - **Ensured robust global variable initialization.**
+
+  How to use:
+  1. Open your Roblox Studio project.
+  2. In the Explorer window, navigate to 'StarterPlayer' -> 'StarterPlayerScripts'.
+  3. Right-click on 'StarterPlayerScripts' and select 'Insert Object' -> 'LocalScript'.
+  4. **CRITICALLY IMPORTANT: COPY AND PASTE THE ENTIRE CODE BELOW, REPLACING ALL EXISTING CONTENT**
+     in your LocalScript. Do not merge or selectively copy.
+  5. Run your game in Roblox Studio (F5 or Play button).
+  6. **Crucially, open the "Output" window (View -> Output) in Roblox Studio**
+     and observe the `DEBUG:` messages and any errors.
+     Look for the "Automation Console" UI with the "Script: ON/OFF" toggle button.
+     Press 'O' to toggle floating.
+--]]
+
+print("Script Version: 2025-07-07_EnhancedUIDebugging_v28") -- Updated for version tracking
+
+local player = game:GetService("Players").LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players") -- Ensure Players service is available
+
+-- Global variables for script state
+local scriptEnabled = false -- This will be controlled by the main console's toggle
+local hotbarSpamActive = true
+local teleportToRaidersActive = true -- Raider teleportation
+local automatedTeleportCycleActive = false -- New: for the stair/diamond teleport cycle
+local scoreIncreasingActionsAllowed = true
+local hasClickedStartButton = false
+local hasTeleportedToRingOnMinigameStart = false -- This flag is kept but its logic removed, will remove if not needed later.
+local foundBonkInteriorInstance = nil -- New: Stores the found MainMap!Summerfest instance
+
+-- CONFIGURATION
+local FROSTCLAWS_HOTBAR_APP_NAME = "MinigameHotbarApp"
+local DROP_BUTTON_NAME = "DropButton"
+local SWORD_BUTTON_NAME = "Sword_Button"
+local EXCLUDED_MODEL_KEYWORDS = {"parrot", "cage"}
+local MAIN_MAP_SUMMERFEST_NAME = "MainMap!Summerfest"
+local GOLD_PILE_GUARD_RADIUS = 30
+local SCORE_LABEL_PATH = "MinigameInGameApp.Body.Right.Container.ValueLabel"
+local TARGET_SCORE = 1600
+local SCORE_UPPER_TOLERANCE = 50
+local SCORE_LOWER_TOLERANCE = 50
+local MAX_CONSOLE_LINES = 20
+local LOG_FINDING_COOLDOWN = 1
+
+-- Noclip Settings (AUTOMATICALLY ACTIVE when scriptEnabled)
+local NoclipWalkSpeed = 40
+local NoclipJumpPower = 0
+local NoclipAutoJumpEnabled = false
+
+-- Floating Settings (using BodyPosition for a hover effect)
+local FloatKey = Enum.KeyCode.O -- Key to toggle Floating (manual toggle)
+local FloatMaxForce = Vector3.new(1e4, 1e4, 1e4) -- Max force for BodyPosition
+local FloatP = 1e4 -- P (Proportional) gain for BodyPosition
+local FloatD = 100 -- D (Derivative) gain for BodyPosition
+local HoverHeight = nil -- Will be set dynamically during first toggle
+
+-- Automated Teleport Settings (Stair/Diamond Logic)
+local TeleportLocationPaths = {
+    {"Game", "Bins", "Boats", "Boat", "RopeStart"}, -- Path for the first "Boat" model by name
+    {"Game", "Bins", "Boats", {type = "index", value = 2}, "RopeStart"} -- Path for the second "Boat" model using its index in GetChildren()
+}
+local TeleportDelay = 3 -- Delay in seconds between each automated teleport
+
+-- INTERNAL VARIABLES
+local consoleTextLabel = nil -- This will be set by createConsole()
+local lastLogTime = {}
+local isNoclipping = false -- Controlled by scriptEnabled
+local isFloating = false -- Controlled by FloatKey
+local currentTeleportIndex = 1 -- Keep track of current location in the cycle for automated teleport
+local ValidTeleportTargets = {} -- This will store {part = PartInstance, debugPath = "path.string"}
+local automatedTeleportLoopConnection = nil -- To manage the automated teleport loop
+
+-- Store original character properties to restore them (if needed later)
+local originalWalkSpeed = nil
+local originalJumpPower = nil
+local originalAutoJumpEnabled = nil
+
+-- Ensure character and humanoidrootpart are available from the start, with robust checks
+local character = player.Character
+local humanoid = nil
+local humanoidRootPart = nil
+
+-- Utility: get character and HRP with retries
+local function getCharacterAndHRP()
+    local currentCharacter = player.Character
+    if not currentCharacter then
+        local success, result = pcall(function() return player.CharacterAdded:Wait() end)
+        if success and result then
+            currentCharacter = result
+        else
+            warn("Failed to get character: " .. tostring(result))
+            return nil, nil, nil
+        end
+    end
+
+    local currentHrp = nil
+    local currentHumanoid = nil
+    local attempts = 0
+    while attempts < 100 do -- Try for up to 10 seconds (100 * 0.1s)
+        if currentCharacter and currentCharacter.Parent then
+            currentHrp = currentCharacter:FindFirstChild("HumanoidRootPart")
+            currentHumanoid = currentCharacter:FindFirstChild("Humanoid")
+            if currentHrp and currentHumanoid then break end
+        end
+        wait(0.1)
+        attempts = attempts + 1
+        -- Re-check character in case it changed or was destroyed/re-added
+        if not currentCharacter or not currentCharacter.Parent then
+            local success, result = pcall(function() return player.Character or player.CharacterAdded:Wait() end)
+            if success and result then
+                currentCharacter = result
+            end
+        end
+    end
+    return currentCharacter, currentHrp, currentHumanoid
+end
+
+-- Custom logging function that outputs to the in-game console UI
+local function log(message, customTimestampPrefix)
+    if consoleTextLabel then
+        local timestamp = customTimestampPrefix or ("[" .. os.date("%H:%M:%S", os.time()) .. "]")
+        local formattedMessage = timestamp .. " " .. tostring(message)
+
+        local currentText = consoleTextLabel.Text
+        local lines = {}
+        -- Split current text into lines
+        for line in currentText:gmatch("([^\n]*)\n?") do
+            if line ~= "" then
+                table.insert(lines, line)
+            end
+        end
+        -- Limit lines to prevent console overflow
+        if #lines >= MAX_CONSOLE_LINES then
+            table.remove(lines, 1) -- Remove oldest line
+        end
+
+        table.insert(lines, formattedMessage)
+        consoleTextLabel.Text = table.concat(lines, "\n")
+    else
+        -- Fallback to default print if console UI is not available
+        print(message)
+    end
+end
+
+-- Function to get the text from the TimerLabel, safely, with minimal debug logging
+local function getTimerLabelText()
+    local timerLabelText = "N/A" -- Default value if not found
+
+    local interiors = workspace:FindFirstChild("Interiors")
+    if not interiors then return timerLabelText end
+
+    local summerfest = interiors:FindFirstChild(MAIN_MAP_SUMMERFEST_NAME)
+    if not summerfest then return timerLabelText end
+
+    local joinZone = summerfest:FindFirstChild("CoconutBonkJoinZone")
+    if not joinZone then return timerLabelText end
+
+    local billboard = joinZone:FindFirstChild("Billboard")
+    if not billboard then return timerLabelText end
+
+    local billboardGui = billboard:FindFirstChild("BillboardGui")
+    if not billboardGui then return timerLabelText end
+
+    local timerLabel = billboardGui:FindFirstChild("TimerLabel")
+    if not timerLabel then
+        return timerLabelText
+    end
+
+    if not timerLabel:IsA("TextLabel") then
+        return timerLabelText
+    end
+
+    timerLabelText = timerLabel.Text
+    return timerLabelText
+end
+
+-- Function to log finding status with a cooldown to prevent spam
+local function logFinding(key, messageName, isFound)
+    local currentTime = tick()
+    local customPrefix = nil
+    local messageSuffix = ""
+
+    -- Specific handling for "bonk_interior" to include minigame status and timer
+    if key == "bonk_interior" then
+        local timerText = getTimerLabelText()
+        local minigameStatus = "Inactive"
+        local hotbarApp = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
+        if hotbarApp and hotbarApp.Enabled then
+            minigameStatus = "Active"
+        end
+
+        customPrefix = '["the timee"]'
+        messageSuffix = string.format(" Minigame (Status: %s) (Timer: %s)", minigameStatus, timerText)
+
+        if isFound then
+            if lastLogTime[key] ~= "found" then
+                log(messageName .. " found!" .. messageSuffix, customPrefix)
+                lastLogTime[key] = "found"
+            end
+        else
+            if lastLogTime[key] == "found" then
+                log(messageName .. " not found. Searching..." .. messageSuffix, customPrefix)
+                lastLogTime[key] = currentTime
+            elseif not lastLogTime[key] or (currentTime - lastLogTime[key]) >= LOG_FINDING_COOLDOWN then
+                log("Finding " .. messageName .. "..." .. messageSuffix, customPrefix)
+                lastLogTime[key] = currentTime
+            end
+        </div>
+        return -- Exit after custom handling for bonk_interior
+    end
+
+    -- Original logic for other keys
+    if isFound then
+        if lastLogTime[key] ~= "found" then
+            log(messageName .. " found!" .. messageSuffix, customPrefix)
+            lastLogTime[key] = "found"
+        end
+    else
+        if lastLogTime[key] == "found" then
+            log(messageName .. " not found. Searching..." .. messageSuffix, customPrefix)
+            lastLogTime[key] = currentTime
+        elseif not lastLogTime[key] or (currentTime - lastLogTime[key]) >= LOG_FINDING_COOLDOWN then
+            log("Finding " .. messageName .. "..." .. messageSuffix, customPrefix)
+            lastLogTime[key] = currentTime
+        end
+    end
+end
+
+-- Function to simulate a button click using the standard :Click() method
+local function clickButton(button)
+    if button and button.Visible and button.Active then
+        log("Clicking: " .. button.Name)
+        local success, err = pcall(function()
+            button:Click()
+        end)
+        if not success then
+            log("Failed to click button " .. button.Name .. ": " .. tostring(err))
+        end
+    else
+        log("Cannot click button: " .. (button and button.Name or "nil"))
+    end
+end
+
+-- Checks if the minigame is currently active based on hotbar app visibility
+local function isMinigameActive()
+    local hotbarApp = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
+    if hotbarApp and hotbarApp.Enabled then
+        logFinding("minigame", "Minigame", true)
+        return true
+    else
+        logFinding("minigame", "Minigame", false)
+        return false
+    end
+end
+
+-- Handles clicking the hotbar abilities (Drop and Sword)
+local function handleHotbarAbilities()
+    if not scoreIncreasingActionsAllowed then
+        log("Hotbar abilities paused due to score control.")
+        return
+    end
+
+    local hotbarApp = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
+    if hotbarApp then
+        local hotbarFrame = hotbarApp:FindFirstChild("Hotbar")
+        if hotbarFrame then
+            local dropBtnContainer = hotbarFrame:FindFirstChild(DROP_BUTTON_NAME)
+            local dropBtn = dropBtnContainer and dropBtnContainer:FindFirstChild("Button")
+            local swordBtnContainer = hotbarFrame:FindFirstChild(SWORD_BUTTON_NAME)
+            local swordBtn = swordBtnContainer and swordBtnContainer:FindFirstChild("Button")
+
+            if dropBtn and dropBtn.Visible and dropBtn.Active then
+                clickButton(dropBtn)
+                log("Clicked DropButton.")
+            else
+                logFinding("drop_button", "Drop Button (nested)", false)
+            end
+            wait(0.1)
+            if swordBtn and swordBtn.Visible and swordBtn.Active then
+                clickButton(swordBtn)
+                log("Clicked SwordButton.")
+            else
+                logFinding("sword_button", "Sword Button (nested)", false)
+            end
+        else
+            logFinding("hotbar_frame", "Hotbar Frame", false)
+        end
+    else
+        logFinding("hotbar_app", "Hotbar App", false)
+    end
+</div>
+
+-- Finds the CoconutBonkInterior model in the workspace
+local function findCoconutBonkInterior()
+    local interiorsFolder = workspace:FindFirstChild("Interiors")
+
+    if not interiorsFolder or not (interiorsFolder:IsA("Folder") or interiorsFolder:IsA("Model")) then
+        log("Workspace.Interiors not found or is not a valid container for interior search.", '["the timee"]')
+        logFinding("bonk_interior", "Workspace.Interiors", false)
+        return nil
+    end
+
+    -- Directly look for "MainMap!Summerfest" as the primary interior
+    local interior = interiorsFolder:FindFirstChild(MAIN_MAP_SUMMERFEST_NAME)
+    if interior and (interior:IsA("Model") or interior:IsA("Folder")) then
+        log(string.format("CoconutBonkInterior (MainMap!Summerfest) found by direct name! (Name: %s)", interior.Name), '["the timee"]')
+        logFinding("bonk_interior", "CoconutBonkInterior", true)
+        return interior
+    else
+        log(string.format("CoconutBonkInterior (MainMap!Summerfest) not found directly under Interiors. Name: %s. Automated teleport features might be affected.", MAIN_MAP_SUMMERFEST_NAME), '["the timee"]')
+        logFinding("bonk_interior", "CoconutBonkInterior", false)
+        return nil
+    end
+end
+
+-- Finds the "Pets" container within the game's structure
+local function findPetsContainer()
+    local interior = findCoconutBonkInterior()
+    if not interior then return nil end
+    local gameFolder = interior:FindFirstChild("Game")
+    if gameFolder then
+        local bins = gameFolder:FindFirstChild("Bins")
+        if bins then
+            local pets = bins:FindFirstChild("Pets")
+            if pets then
+                logFinding("pets_container", "Pets (Game.Bins.Pets)", true)
+                return pets
+            </div>
+        end
+    end
+    logFinding("pets_container", "Pets (Game.Bins.Pets)", false)
+    return nil
+end
+
+-- Handles teleportation to "raider" models near the GoldPile
+local function handleTeleportToModels()
+    if not scriptEnabled then
+        log("Teleportation: Script is disabled.")
+        return
+    end
+    if not teleportToRaidersActive then
+        log("Teleportation: Feature is disabled.")
+        return
+    end
+
+    local petsContainer = findPetsContainer()
+    if not petsContainer then
+        log("Teleportation: Pets container not found.")
+        return
+    end
+
+    local character, hrp = getCharacterAndHRP()
+    if not character or not hrp then
+        log("Teleportation: Character or HumanoidRootPart not found.")
+        return
+    end
+
+    local bonkInterior = findCoconutBonkInterior()
+    if not bonkInterior then
+        log("Teleportation: CoconutBonkInterior not found.")
+        return
+    end
+
+    local gameFolder = bonkInterior:FindFirstChild("Game")
+    local goldPileRoot = gameFolder and gameFolder:FindFirstChild("GoldPile") and gameFolder.GoldPile:FindFirstChild("Root")
+    if not goldPileRoot or not goldPileRoot:IsA("BasePart") then
+        log("Teleportation: No valid GoldPile Root for raider detection.")
+        return
+    end
+    local goldPos = goldPileRoot.Position
+    log("Teleportation: GoldPile Root found at " .. tostring(goldPos))
+
+    local raiderFound = false
+    for _, model in ipairs(petsContainer:GetChildren()) do
+        if model:IsA("Model") then
+            local nameLower = model.Name:lower()
+            local shouldExclude = false
+            for _, keyword in ipairs(EXCLUDED_MODEL_KEYWORDS) do
+                if nameLower:find(keyword) then
+                    shouldExclude = true
+                    break
+                end
+            end
+
+            if not shouldExclude then
+                local targetPart = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
+                if targetPart and targetPart:IsA("BasePart") then
+                    local dist = (targetPart.Position - goldPos).magnitude
+                    log(string.format("Teleportation: Checking model '%s', distance to GoldPile: %.2f studs.", model.Name, dist))
+                    if dist <= GOLD_PILE_GUARD_RADIUS then
+                        raiderFound = true
+                        log("Threat: " .. model.Name .. " within guard radius (" .. math.floor(dist) .. " studs). Attempting teleport.")
+                        local teleportPos = targetPart.Position + Vector3.new(0, 5, 0) -- Teleport slightly above
+                        local lookAtPos = targetPart.Position -- Look at the raider's position
+                        if hrp and hrp.Parent == character then
+                            local success, err = pcall(function()
+                                hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
+                            end)
+                            if not success then
+                                warn("Teleport failed for " .. model.Name .. ": " .. tostring(err))
+                                log("Teleportation: Failed to teleport to " .. model.Name .. ": " .. tostring(err))
+                            else
+                                log("Teleportation: Successfully teleported to " .. model.Name .. ".")
+                                wait(0.005) -- Small wait after teleport
+                            end
+                        else
+                            log("Teleportation: HRP not valid for teleport (parent issue).")
+                        end
+                        -- We teleport to the first detected raider and then return to let the loop continue
+                        -- This ensures we only teleport to one raider per call, then re-evaluate.
+                        return
+                    end
+                else
+                    log("Teleportation: Model '" .. model.Name .. "' has no valid PrimaryPart or HumanoidRootPart for teleport.")
+                end
+            else
+                log("Teleportation: Excluding model '" .. model.Name .. "' due to keyword match.")
+            end
+        else
+            log("Teleportation: Skipping non-model instance in Pets container: " .. model.Name)
+        end
+    end
+    if not raiderFound then
+        log("Teleportation: No raiders found within guard radius after checking all pets.")
+    end
+end
+
+-- Checks the current score and adjusts actions (pauses/resumes hotbar abilities)
+local function checkScoreAndAdjustActions()
+    local success, valueLabel = pcall(function()
+        return playerGui:WaitForChild("MinigameInGameApp", 5)
+            :WaitForChild("Body", 5)
+            :WaitForChild("Right", 5)
+            :WaitForChild("Container", 5)
+            :WaitForChild("ValueLabel", 5)
+    end)
+
+    if not success or not valueLabel or not valueLabel:IsA("TextLabel") then
+        log("❌ ValueLabel not found or not TextLabel after waiting.")
+        return
+    end
+    logFinding("score_label", "Score ValueLabel", true)
+
+    local currentScore = tonumber(valueLabel.Text)
+    if not currentScore then
+        log("Could not parse score: " .. tostring(valueLabel.Text))
+        return
+    end
+
+    local upperThreshold = TARGET_SCORE + SCORE_UPPER_TOLERANCE
+    local lowerThreshold = TARGET_SCORE - SCORE_LOWER_TOLERANCE
+    if currentScore > upperThreshold and scoreIncreasingActionsAllowed then
+        scoreIncreasingActionsAllowed = false
+        log(string.format("Score %d > upper threshold. Pausing actions.", currentScore))
+    elseif currentScore < lowerThreshold and not scoreIncreasingActionsAllowed then
+        scoreIncreasingActionsAllowed = true
+        log(string.format("Score %d < lower threshold. Resuming actions.", currentScore))
+    end
+    log("Score: " .. currentScore)
+end
+
+-- Gets the teleport ring instance (for reference, not for automatic teleport)
+local function getTeleportRingInstance()
+    local ring = nil
+    local interiors = workspace:FindFirstChild("Interiors")
+    if not interiors then warn("DEBUG: getTeleportRingInstance - Interiors not found."); return nil end
+
+    local summerfest = interiors:FindFirstChild(MAIN_MAP_SUMMERFEST_NAME)
+    if not summerfest then warn("DEBUG: getTeleportRingInstance - MainMap!Summerfest not found under Interiors."); return nil end
+
+    local joinZone = summerfest:FindFirstChild("CoconutBonkJoinZone")
+    if not joinZone then warn("DEBUG: getTeleportRingInstance - CoconutBonkJoinZone not found under MainMap!Summerfest."); return nil end
+
+    ring = joinZone:FindFirstChild("Ring")
+    if not ring then
+        warn("DEBUG: getTeleportRingInstance - Ring not found under CoconutBonkJoinZone.");
+        return nil
+    end
+
+    if not ring:IsA("BasePart") then
+        warn("DEBUG: getTeleportRingInstance - Ring found but is not a BasePart.");
+        return nil
+    end
+
+    -- Safely print the full name only if ring is a valid instance
+    if ring then
+        print("DEBUG: getTeleportRingInstance - Found Ring at: " .. ring:GetFullName())
+    end
+    return ring
+end
+
+-- Function to set collision for all character parts
+local function setCharacterCollisions(canCollide)
+    local currentCharacter, currentHrp, currentHumanoid = getCharacterAndHRP()
+    if currentCharacter then
+        for _, part in ipairs(currentCharacter:GetChildren()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = canCollide
+            end
+        end
+    else
+        log("Noclip: Character not found to set collisions.")
+    end
+end
+
+-- Function to activate Noclip automatically
+local function activateNoclip()
+    if not isNoclipping then
+        isNoclipping = true
+        log("[Utility] Noclip: ACTIVATING AUTOMATICALLY.")
+        local currentCharacter, currentHrp, currentHumanoid = getCharacterAndHRP()
+        if currentHumanoid then
+            currentHumanoid.WalkSpeed = NoclipWalkSpeed
+            currentHumanoid.JumpPower = NoclipJumpPower
+            currentHumanoid.AutoJumpEnabled = NoclipAutoJumpEnabled
+        else
+            log("Noclip: Humanoid not found to set properties.")
+        </div>
+        setCharacterCollisions(false) -- Disable collisions
+        log("[Utility] Noclip: AUTOMATICALLY ON.")
+    end
+end
+
+-- Function to deactivate Noclip
+local function deactivateNoclip()
+    if isNoclipping then
+        isNoclipping = false
+        log("[Utility] Noclip: DEACTIVATING.")
+        local currentCharacter, currentHrp, currentHumanoid = getCharacterAndHRP()
+        if currentHumanoid and originalWalkSpeed and originalJumpPower and originalAutoJumpEnabled then
+            currentHumanoid.WalkSpeed = originalWalkSpeed
+            currentHumanoid.JumpPower = originalJumpPower
+            currentHumanoid.AutoJumpEnabled = originalAutoJumpEnabled
+        else
+            log("Noclip: Humanoid or original properties not found to restore.")
+        end
+        setCharacterCollisions(true) -- Enable collisions
+        log("[Utility] Noclip: OFF.")
+    end
+end
+
+-- Function to toggle Floating (using BodyPosition)
+local function toggleFloating()
+    isFloating = not isFloating -- Flip the state
+
+    local currentCharacter, currentHrp, currentHumanoid = getCharacterAndHRP()
+    if not currentHrp or not currentHumanoid then
+        log("[Utility] Floating: HRP or Humanoid not found. Cannot toggle floating.")
+        isFloating = false -- Reset state if dependencies are missing
+        return
+    end
+
+    if isFloating then
+        log("[Utility] Floating: Attempting to turn ON (Stable in-place floating).")
+        local bodyPosition = currentHrp:FindFirstChild("WRDBodyPosition")
+        if not bodyPosition then
+            bodyPosition = Instance.new("BodyPosition")
+            bodyPosition.Name = "WRDBodyPosition"
+            bodyPosition.Parent = currentHrp
+            log("[Utility] Floating: Created new BodyPosition.")
+        end
+        -- Set hover height to current height if not set yet
+        if not HoverHeight then
+            HoverHeight = currentHrp.CFrame.Position.Y
+            log("[Utility] Floating: Initial HoverHeight set to " .. string.format("%.2f", HoverHeight))
+        end
+        -- Set target position (X,Z stay same, Y fixed)
+        local currentPos = currentHrp.CFrame.Position
+        bodyPosition.Position = Vector3.new(currentPos.X, HoverHeight, currentPos.Z)
+        bodyPosition.MaxForce = FloatMaxForce
+        bodyPosition.P = FloatP
+        bodyPosition.D = FloatD
+        currentHumanoid.WalkSpeed = 0 -- Stop horizontal movement while truly floating
+        currentHumanoid.Sit = false -- Ensure not sitting
+        log("[Utility] Floating: ON at height " .. string.format("%.2f", HoverHeight))
+    else
+        log("[Utility] Floating: Attempting to turn OFF.")
+        local bodyPosition = currentHrp:FindFirstChild("WRDBodyPosition")
+        if bodyPosition then
+            bodyPosition:Destroy()
+            log("[Utility] Floating: Destroyed BodyPosition.")
+        end
+        if originalWalkSpeed then
+            currentHumanoid.WalkSpeed = originalWalkSpeed -- Restore original walkspeed
+        end
+        log("[Utility] Floating: OFF.")
+    end
+end
+
+-- New dynamic path finding function
+-- It takes a base instance (e.g., workspace or a specific model) and a table of components
+local function findTargetPartDynamic(baseInstance, pathComponents)
+    local currentParent = baseInstance -- Start search from the provided base instance
+    local constructedPathString = (baseInstance and typeof(baseInstance) == "Instance" and baseInstance:GetFullName()) or "nil_or_invalid_base" -- To build a human-readable path for debugging
+
+    for i, component in ipairs(pathComponents) do
+        local currentParentName = "N/A"
+        if typeof(currentParent) == "Instance" then
+            currentParentName = currentParent.Name
+        else
+            currentParentName = tostring(currentParent) -- If it's already a string or nil, just use tostring
+        end
+
+        print(string.format("DEBUG: findTargetPartDynamic - Iteration %d, Component: %s (Type: %s), CurrentParent Name: %s, Type: %s",
+            i, tostring(component), type(component), currentParentName, typeof(currentParent)))
+
+        -- Crucial: Ensure currentParent is a valid Instance before trying to find children
+        if not currentParent or not typeof(currentParent) == "Instance" or (typeof(currentParent) == "Instance" and currentParent.Parent == nil) then
+            warn(string.format("[Utility Debug] Path broken at component #%d ('%s'). Current parent is invalid (Type: %s, Value: %s). Aborting path search.",
+                i, tostring(component), typeof(currentParent), tostring(currentParent)))
+            return nil, "PathBroken"
+        end
+
+        local foundChild = nil
+        if type(component) == "string" then
+            foundChild = currentParent:FindFirstChild(component)
+
+            if foundChild then
+                -- Only add a dot if it's not the initial base or a previous special case bracket
+                if constructedPathString ~= ((baseInstance and typeof(baseInstance) == "Instance" and baseInstance:GetFullName()) or "nil_or_invalid_base") and not constructedPathString:match("%]$") then
+                    constructedPathString = constructedPathString .. "."
+                elseif constructedPathString == ((baseInstance and typeof(baseInstance) == "Instance" and baseInstance:GetFullName()) or "nil_or_invalid_base") and i > 1 then
+                    constructedPathString = constructedPathString .. "."
+                end
+                constructedPathString = constructedPathString .. foundChild.Name
+            end
+
+        elseif type(component) == "table" and component.type == "index" and type(component.value) == "number" then
+            local children = currentParent:GetChildren()
+            if children[component.value] then
+                foundChild = children[component.value]
+                if constructedPathString ~= ((baseInstance and typeof(baseInstance) == "Instance" and baseInstance:GetFullName()) or "nil_or_invalid_base") and not constructedPathString:match("%]$") then
+                    constructedPathString = constructedPathString .. "."
+                elseif constructedPathString == ((baseInstance and typeof(baseInstance) == "Instance" and baseInstance:GetFullName()) or "nil_or_invalid_base") and i > 1 then
+                    constructedPathString = constructedPathString .. "."
+                end
+                constructedPathString = constructedPathString .. ":GetChildren()[" .. component.value .. "]"
+            else
+                warn(string.format("[Utility Debug] Could not find child at index %d under %s.", component.value, currentParent.Name))
+            </div>
+        else
+            warn(string.format("[Utility Debug] Invalid path component type or format: %s (Expected string or {type='index', value=N}).", tostring(component)))
+            return nil, "InvalidComponent"
+        end
+
+        if foundChild then
+            currentParent = foundChild
+        else
+            warn(string.format("[Utility Debug] Could not find component '%s' under '%s'.",
+                (type(component)=="string" and component or tostring(component.value)), currentParentName))
+            return nil, "ComponentNotFound"
+        end
+    end
+
+    if currentParent and currentParent:IsA("BasePart") then
+        return currentParent, constructedPathString
+    else
+        warn(string.format("[Utility Debug] Final target is not a BasePart or not found. Found type: %s, value: %s.",
+            typeof(currentParent), tostring(currentParent)))
+        return nil, "FinalTargetNotBasePart"
+    end
+end
+
+-- Function to perform a single float-teleport
+local function performFloatTeleport(targetEntry)
+    local currentCharacter, currentHrp, currentHumanoid = getCharacterAndHRP()
+    if not currentHrp or not currentHumanoid then
+        log("[Utility] Teleport: HRP or Humanoid not found. Cannot perform teleport.")
+        return
+    end
+
+    local targetPart = targetEntry.part
+    local debugPath = targetEntry.debugPath
+
+    if targetPart and targetPart:IsA("BasePart") then
+        -- Check if the target is one of the "Boat" RopeStart locations
+        if debugPath:find("Boat.RopeStart") or debugPath:find(":GetChildren%[2%].RopeStart") then
+            log("finding bonk minigame interior boat....", '["TIME"]')
+        end
+
+        log("[Utility] Teleport: Calculating CFrame for " .. targetPart.Name .. " (Path: " .. debugPath .. ")")
+        local targetPosition = targetPart.CFrame.Position
+        local newCFrame = CFrame.new(targetPosition + Vector3.new(0, currentHrp.Size.Y / 2 + 0.1, 0))
+
+        currentHrp.CFrame = newCFrame
+        log("Teleported to " .. targetPart.Name .. " at " .. tostring(targetPosition))
+
+        -- Set hover height if not already set, or update it if we just teleported
+        if not HoverHeight then
+            HoverHeight = targetPosition.Y + currentHrp.Size.Y / 2 + 0.1
+            log("[Utility] Floating: Initial HoverHeight set to " .. string.format("%.2f", HoverHeight) .. " after teleport.")
+        end
+
+        -- Reapply the BodyPosition to keep floating in place
+        if not isFloating then
+            toggleFloating() -- Activate floating if not already active
+        else
+            local bodyPosition = currentHrp:FindFirstChild("WRDBodyPosition")
+            if not bodyPosition then
+                bodyPosition = Instance.new("BodyPosition")
+                bodyPosition.Name = "WRDBodyPosition"
+                bodyPosition.Parent = currentHrp
+                log("[Utility] Teleport: Re-created BodyPosition during teleport.")
+            end
+            bodyPosition.Position = Vector3.new(targetPosition.X, HoverHeight, targetPosition.Z)
+            bodyPosition.MaxForce = FloatMaxForce
+            bodyPosition.P = FloatP
+            bodyPosition.D = FloatD
+            currentHumanoid.WalkSpeed = 0
+            currentHumanoid.Sit = false
+        end
+    else
+        warn("Invalid target part for teleport. TargetEntry: " .. tostring(targetEntry) .. ", Part: " .. tostring(targetPart))
+        log("Invalid target part for teleport. Path: " .. debugPath)
+    end
+end
+
+-- Helper function to format path components for printing
+local function formatPathComponentsForPrint(componentsTable)
+    local formatted = {}
+    for _, comp in ipairs(componentsTable) do
+        if type(comp) == "string" then
+            table.insert(formatted, comp)
+        elseif type(comp) == "table" and comp.type == "index" then
+            table.insert(formatted, "GetChildren()[" .. comp.value .. "]")
+        else
+            table.insert(formatted, tostring(comp)) -- Fallback for unexpected types
+        end
+    end
+    return table.concat(formatted, ".")
+end
+
+-- --- GUI CREATION (Main Console UI) ---
+local function createConsole()
+    local gui = Instance.new("ScreenGui", playerGui)
+    gui.Name = "MainConsole"
+
+    local frame = Instance.new("Frame", gui)
+    frame.Size = UDim2.new(0.5, 0, 0.6, 0)
+    frame.Position = UDim2.new(0.25, 0, 0.2, 0)
+    frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    frame.BorderSizePixel = 2
+    frame.BorderColor3 = Color3.new(1, 1, 1)
+    frame.Active = true -- Make draggable
+    frame.Draggable = true -- Make draggable
+
+    local header = Instance.new("Frame", frame)
+    header.Size = UDim2.new(1, 0, 0, 50)
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+
+    -- Console Title
+    local titleLabel = Instance.new("TextLabel", header)
+    titleLabel.Size = UDim2.new(1, -110, 1, 0) -- Adjust size for buttons
+    titleLabel.Position = UDim2.new(0, 100, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.TextColor3 = Color3.new(1, 1, 1)
+    titleLabel.Text = "Automation Console"
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.FontSize = Enum.FontSize.Size18
+    titleLabel.TextSize = 22
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+    -- Wider close button with "X"
+    local closeBtn = Instance.new("TextButton", header)
+    closeBtn.Size = UDim2.new(0, 100, 1, 0) -- Wider size
+    closeBtn.Position = UDim2.new(1, -100, 0, 0)
+    closeBtn.BackgroundColor3 = Color3.new(1, 0, 0)
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.FontSize = Enum.FontSize.Size14
+    closeBtn.TextSize = 24
+
+    -- DEBUG: Add type checks before connecting
+    print("DEBUG: Type of closeBtn before connect:", typeof(closeBtn), "ClassName:", closeBtn.ClassName)
+    if typeof(closeBtn) == "Instance" and closeBtn.ClassName == "TextButton" then
+        print("DEBUG: closeBtn is a TextButton instance. Checking MouseButton1Click type.")
+        if typeof(closeBtn.MouseButton1Click) == "RBXScriptSignal" then
+            print("DEBUG: MouseButton1Click is an RBXScriptSignal. Connecting closeBtn.")
+            closeBtn.MouseButton1Click:Connect(function()
+                gui:Destroy()
+                print("Main Console closed")
+                scriptEnabled = false -- Stop the main automation loop
+                deactivateNoclip() -- Deactivate noclip when console closes
+                if isFloating then toggleFloating() end -- Turn off floating
+                if automatedTeleportLoopConnection then
+                    task.cancel(automatedTeleportLoopConnection)
+                    automatedTeleportLoopConnection = nil
+                    log("Automated teleport cycle stopped.")
+                end
+            end)
+        else
+            warn("ERROR: closeBtn.MouseButton1Click is NOT an RBXScriptSignal. Type:", typeof(closeBtn.MouseButton1Click))
+        end
+    else
+        warn("ERROR: closeBtn is not a TextButton instance. Type:", typeof(closeBtn), "ClassName:", closeBtn.ClassName)
+    end
+
+
+    -- Script ON/OFF toggle (now positioned where START button was)
+    local toggleBtn = Instance.new("TextButton", header)
+    toggleBtn.Size = UDim2.new(0, 150, 1, 0)
+    toggleBtn.Position = UDim2.new(0, 10, 0, 0) -- Adjusted position
+    toggleBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.8)
+    toggleBtn.Text = "Script: OFF"
+    toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.FontSize = Enum.FontSize.Size14
+    toggleBtn.TextSize = 20
+
+    local function updateToggleUI()
+        if scriptEnabled then
+            toggleBtn.Text = "Script: ON"
+            toggleBtn.BackgroundColor3 = Color3.new(0, 1, 0) -- Green for ON
+        else
+            toggleBtn.Text = "Script: OFF"
+            toggleBtn.BackgroundColor3 = Color3.new(1, 0, 0) -- Red for OFF
+        </div>
+    end
+
+    updateToggleUI() -- Initialize button appearance
+
+    -- DEBUG: Add type checks before connecting
+    print("DEBUG: Type of toggleBtn before connect:", typeof(toggleBtn), "ClassName:", toggleBtn.ClassName)
+    if typeof(toggleBtn) == "Instance" and toggleBtn.ClassName == "TextButton" then
+        print("DEBUG: toggleBtn is a TextButton instance. Checking MouseButton1Click type.")
+        if typeof(toggleBtn.MouseButton1Click) == "RBXScriptSignal" then
+            print("DEBUG: MouseButton1Click is an RBXScriptSignal. Connecting toggleBtn.")
+            toggleBtn.MouseButton1Click:Connect(function()
+                scriptEnabled = not scriptEnabled -- Toggle the global scriptEnabled state
+                updateToggleUI() -- Update the button's appearance
+                print("Automation Script toggled: " .. (scriptEnabled and "ON" or "OFF"))
+                log("Automation Script toggled: " .. (scriptEnabled and "ON" or "OFF"))
+
+                if scriptEnabled then
+                    -- Activate Noclip only if the bonk interior was found
+                    if foundBonkInteriorInstance then
+                        activateNoclip()
+                    else
+                        log("Noclip not activated: Bonk interior not found.", '["WARN"]')
+                    end
+
+                    -- Start the automated teleport cycle if paths were valid
+                    if #ValidTeleportTargets > 0 and not automatedTeleportLoopConnection then
+                        automatedTeleportLoopConnection = task.spawn(function()
+                            log("[Utility] Teleport Cycle: Waiting for character/root part to be fully ready...")
+                            local char, hrp, hum = getCharacterAndHRP()
+                            if not char or not hrp or not hum then
+                                log("Automated Teleport: Character/HRP/Humanoid not ready. Cannot start cycle.")
+                                return
+                            end
+                            log("[Utility] Teleport Cycle: Character ready. Starting loop.")
+
+                            local success, err = pcall(function()
+                                while scriptEnabled do -- Loop only while script is enabled
+                                    local targetEntry = ValidTeleportTargets[currentTeleportIndex]
+                                    log("\n--- Teleporting Cycle Step: " .. currentTeleportIndex .. " of " .. #ValidTeleportTargets .. " ---")
+                                    performFloatTeleport(targetEntry)
+
+                                    currentTeleportIndex = currentTeleportIndex + 1
+                                    if currentTeleportIndex > #ValidTeleportTargets then
+                                        currentTeleportIndex = 1 -- Cycle back to the first location
+                                    end
+
+                                    log("[Utility] Teleport Cycle: Waiting " .. TeleportDelay .. " seconds for next teleport...")
+                                    task.wait(TeleportDelay)
+                                end
+                            end)
+
+                            if not success then
+                                warn("!!! CRITICAL ERROR: Automated teleport loop encountered an error and STOPPED: " .. tostring(err) .. " !!!")
+                                log("!!! CRITICAL ERROR: Automated teleport loop stopped due to error: " .. tostring(err) .. " !!!")
+                            end
+                            automatedTeleportLoopConnection = nil -- Clear connection when loop ends
+                            log("Automated teleport cycle finished.")
+                        end)
+                    elseif #ValidTeleportTargets == 0 then
+                        log("Automated Teleport: No valid teleport targets found. Cycle will not start.")
+                    end
+                else
+                    -- Deactivate Noclip when the script is disabled (always turn off)
+                    deactivateNoclip()
+                    -- Stop the automated teleport cycle
+                    if automatedTeleportLoopConnection then
+                        task.cancel(automatedTeleportLoopConnection) -- Attempt to cancel the running task
+                        automatedTeleportLoopConnection = nil
+                        log("Automated teleport cycle explicitly stopped.")
+                    end
+                    if isFloating then toggleFloating() end -- Turn off floating if it was on
+                end
+            end)
+        else
+            warn("ERROR: toggleBtn.MouseButton1Click is NOT an RBXScriptSignal. Type:", typeof(toggleBtn.MouseButton1Click))
+        end
+    else
+        warn("ERROR: toggleBtn is not a TextButton instance. Type:", typeof(toggleBtn), "ClassName:", toggleBtn.ClassName)
+    end
+
+
+    -- Console Log Area
+    local textLabel = Instance.new("TextLabel", frame)
+    textLabel.Name = "LogTextLabel"
+    textLabel.Size = UDim2.new(1, -10, 1, -60) -- Adjusted size to make space for header and potential input
+    textLabel.Position = UDim2.new(0, 5, 0, 55)
+    textLabel.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    textLabel.TextColor3 = Color3.new(1, 1, 1)
+    textLabel.TextXAlignment = Enum.TextXAlignment.Left
+    textLabel.TextYAlignment = Enum.TextYAlignment.Top
+    textLabel.TextWrapped = true
+    textLabel.Font = Enum.Font.Code
+    textLabel.FontSize = Enum.FontSize.Size14
+    textLabel.Text = "Console Log:\n"
+    consoleTextLabel = textLabel -- Assign to the global variable for logging
+
+    log("Main Console UI initialized.")
+
+    -- Controllers (organized below) - These are part of the main console frame
+    local controllersFrame = Instance.new("Frame", frame)
+    controllersFrame.Name = "ControllersFrame"
+    controllersFrame.Size = UDim2.new(1, -10, 0.25, 0) -- Adjust size and position as needed
+    controllersFrame.Position = UDim2.new(0, 5, 0.65, 0) -- Below the log area
+    controllersFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    controllersFrame.BorderSizePixel = 0 -- No border for this sub-frame
+
+    local uiListLayout = Instance.new("UIListLayout", controllersFrame)
+    uiListLayout.FillDirection = Enum.FillDirection.Horizontal
+    uiListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    uiListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    uiListLayout.Padding = UDim.new(0, 10)
+
+    for i=1,4 do
+        local cFrame = Instance.new("Frame", controllersFrame) -- Parent to controllersFrame
+        cFrame.Size = UDim2.new(0, 150, 0, 100)
+        cFrame.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+        cFrame.BorderSizePixel = 1
+        cFrame.BorderColor3 = Color3.new(1, 1, 1)
+        cFrame.LayoutOrder = i -- For UIListLayout
+
+        local uiGridLayout = Instance.new("UIGridLayout", cFrame)
+        uiGridLayout.FillDirection = Enum.FillDirection.Vertical
+        uiGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        uiGridLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+        uiGridLayout.CellSize = UDim2.new(1, 0, 0.33, 0)
+        uiGridLayout.CellPadding = UDim2.new(0, 0, 0, 0) -- Use CellPadding for spacing between cells
+        uiGridLayout.StartCorner = Enum.StartCorner.TopLeft
+
+        for j=1,3 do
+            local lbl = Instance.new("TextLabel", cFrame)
+            lbl.Size = UDim2.new(1, 0, 0.33, 0) -- Size handled by UIGridLayout
+            lbl.BackgroundTransparency = 1
+            lbl.TextColor3 = Color3.new(1,1,1)
+            lbl.Text = "Panel"..i.."-Label"..j
+            lbl.Font = Enum.Font.SourceSans
+            lbl.TextSize = 14
+        end
+    end
+end
+
+-- --- INITIALIZATION ---
+createConsole() -- This creates the main console and sets consoleTextLabel
+
+-- Initial character and HRP load and store original properties
+character = player.Character
+if not character then
+    local success, result = pcall(function()
+        return player.CharacterAdded:Wait()
+    end)
+    if success and result then
+        character = result
+    else
+        warn("Initial character load failed or CharacterAdded:Wait() problematic: " .. tostring(result))
+    end
+end
+
+if character then
+    local success, result = pcall(function()
+        humanoid = character:WaitForChild("Humanoid", 10)
+        humanoidRootPart = character:WaitForChild("HumanoidRootPart", 10)
+        return humanoid and humanoidRootPart
+    end)
+    if success and result then
+        print("Humanoid and HumanoidRootPart loaded.")
+        -- Store original properties AFTER they are loaded
+        originalWalkSpeed = humanoid.WalkSpeed
+        originalJumpPower = humanoid.JumpPower
+        originalAutoJumpEnabled = humanoid.AutoJumpEnabled
+    else
+        warn("Initial Humanoid/HumanoidRootPart load failed or WaitForChild: " .. tostring(result))
+    end
+else
+    warn("Character not available for initial Humanoid/HumanoidRootPart check.")
+end
+
+
+-- Early checks for interior and path validation
+log("--- Initializing Automated Features ---")
+
+local interiorsFolder = workspace:FindFirstChild("Interiors")
+local allPathsValid = true -- Assume valid until proven otherwise
+
+if not interiorsFolder or not (interiorsFolder:IsA("Folder") or interiorsFolder:IsA("Model")) then
+    warn("!!! SCRIPT WARNING: 'Workspace.Interiors' NOT FOUND or is not a valid container (Folder/Model). Automated features might not work. !!!")
+    log("!!! SCRIPT WARNING: 'Workspace.Interiors' NOT FOUND. Automated features disabled. !!!")
+    allPathsValid = false
+else
+    log("'Workspace.Interiors' found. Proceeding with interior search.")
+
+    -- Find interior model and store it globally
+    foundBonkInteriorInstance = findCoconutBonkInterior() -- This function now logs its own finding status
+
+    if not foundBonkInteriorInstance then
+        warn("No interior matching criteria found. Automated features disabled.")
+        log("No interior matching criteria found. Automated features disabled.")
+        allPathsValid = false
+    else
+        log("Interior found. Proceeding with teleport path validation.")
+        log("Finding bonk interior boats....", '["TIME"]')
+
+        -- Validate all teleport paths before starting the loop
+        for i, pathComponentsTable in ipairs(TeleportLocationPaths) do
+            log("\nValidating dynamic path " .. i .. ": " .. formatPathComponentsForPrint(pathComponentsTable))
+            -- Pass foundBonkInteriorInstance as the base for finding these relative paths
+            local targetPart, debugPathString = findTargetPartDynamic(foundBonkInteriorInstance, pathComponentsTable)
+            if targetPart and debugPathString then
+                -- Prepend the full path to the debugPathString for clarity in logs
+                local fullDebugPath = foundBonkInteriorInstance:GetFullName() .. "." .. debugPathString
+                table.insert(ValidTeleportTargets, {part = targetPart, debugPath = fullDebugPath})
+                log("[Utility Debug] Successfully validated path " .. i .. ". Found at: " .. fullDebugPath)
+            else
+                warn("!!! CRITICAL ERROR: Required teleport part NOT FOUND for path (Component issue: '" .. debugPathString .. "'). Automated teleport sequence ABORTED. !!!")
+                log("!!! CRITICAL ERROR: Required teleport part NOT FOUND for path (Component issue: '" .. debugPathString .. "'). Automated teleport sequence ABORTED. !!!")
+                allPathsValid = false
+                break -- Stop checking if one is missing
+            end
+        end
+    end
+end
+
+if not allPathsValid then
+    warn("!!! CRITICAL ERROR: Not all required teleport locations were found dynamically. Automated teleport will NOT start. !!!")
+    log("!!! CRITICAL ERROR: Not all required teleport locations were found dynamically. Automated teleport will NOT start. !!!")
+    print("\n--- Script Loaded (Limited Functionality) ---")
+    print("  - Noclip: (Controlled by toggle, but game interior not found).")
+    print("  - Floating (BodyPosition): Press 'O' to toggle.")
+    print("  - Teleport (Float-Teleport): (NOT active - some required parts not found).")
+    print("-------------------------------------------\n")
+    -- Do not return here, let the main loop run, but with limited functionality
+else
+    log("\nAll " .. #ValidTeleportTargets .. " teleport locations validated successfully through dynamic search.")
+    print("\n--- Full Utility Script Loaded (Automation Controlled by Toggle) ---")
+    print("  - Noclip: Controlled by 'Script: ON/OFF' toggle (only if bonk interior found).")
+    print("  - Floating (BodyPosition): Press '" .. FloatKey.Name .. "' to toggle.")
+    print("  - Teleport (Float-Teleport): Controlled by 'Script: ON/OFF' toggle, cycles through " .. #ValidTeleportTargets .. " locations with " .. TeleportDelay .. "s delay.")
+    print("---------------------------------------------------\n")
+end
+
+-- --- INITIAL TELEPORT ON LOAD ---
+-- This function will be called once at the script's start.
+-- Its execution is independent of the 'scriptEnabled' toggle.
+local function initialTeleport()
+    local char, hrp, hum = getCharacterAndHRP()
+    local ring = getTeleportRingInstance() -- This now directly targets the Ring part
+
+    if ring and hrp and hrp.Parent == char then
+        local success, err = pcall(function()
+            hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0) -- Teleport slightly above the ring
+        end)
+        if not success then
+            warn("Initial teleport failed: " .. tostring(err))
+            log("Initial teleport failed: " .. tostring(err))
+        else
+            wait(0.5)
+            log("Initial teleport completed to Ring.")
+        end
+    else
+        warn("No valid Ring or HRP for initial teleport.")
+        log("Initial teleport skipped: Ring or HRP not found.")
+    end
+end
+
+initialTeleport() -- Call it once when the script starts
+
+
+-- // --- EVENT CONNECTIONS --- //
+
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if not gameProcessedEvent then
+        if input.KeyCode == FloatKey then
+            toggleFloating()
+        end
+    end
+end)
+
+-- CharacterAdded listener to re-initialize humanoid/hrp and noclip/floating on respawn
+player.CharacterAdded:Connect(function(newCharacter)
+    character = newCharacter
+    local success, result = pcall(function()
+        humanoid = character:WaitForChild("Humanoid", 10)
+        humanoidRootPart = character:WaitForChild("HumanoidRootPart", 10)
+        return humanoid and humanoidRootPart
+    end)
+    if success and result then
+        log("Character respawned. Humanoid and HumanoidRootPart re-loaded.")
+        -- Store original properties on character respawn
+        originalWalkSpeed = humanoid.WalkSpeed
+        originalJumpPower = humanoid.JumpPower
+        originalAutoJumpEnabled = humanoid.AutoJumpEnabled
+
+        -- Restore noclip if script is still enabled AND bonk interior was found
+        if scriptEnabled and foundBonkInteriorInstance then
+            activateNoclip()
+        elseif scriptEnabled and not foundBonkInteriorInstance then
+            log("Noclip not reactivated on respawn: Bonk interior not found.", '["WARN"]')
+        end
+        -- Floating state is handled by toggleFloating, no need to re-apply here
+    else
+        warn("Character respawned, but Humanoid/HumanoidRootPart failed to load: " .. tostring(result))
+    end
+end)
+
+-- Character death (moved to a safe check, as humanoid might be nil initially)
+local function setupHumanoidDiedConnection()
+    if humanoid and not humanoid:FindFirstChild("DiedConnection") then -- Prevent multiple connections
+        local connection = humanoid.Died:Connect(function()
+            log("[Utility] Character Died: Resetting states.")
+            -- Noclip will be reactivated by CharacterAdded listener if scriptEnabled
+            isNoclipping = false
+
+            if isFloating then
+                local currentCharacter, currentHrp, currentHumanoid = getCharacterAndHRP()
+                if currentHrp then
+                    local bodyPosition = currentHrp:FindFirstChild("WRDBodyPosition")
+                    if bodyPosition then
+                        bodyPosition:Destroy()
+                        log("[Utility] Character Died: Destroyed BodyPosition.")
+                    end
+                end
+                isFloating = false
+            end
+        end)
+        connection.Name = "DiedConnection" -- Name the connection for easier tracking
+    end
+end
+setupHumanoidDiedConnection() -- Initial setup
+player.CharacterAdded:Connect(setupHumanoidDiedConnection) -- Re-setup on new character
+
+-- --- MAIN AUTOMATION LOOP ---
+while true do
+    -- The automation logic now runs directly, controlled by the global 'scriptEnabled'
+    if scriptEnabled then
+        local minigameIsActive = isMinigameActive()
+
+        if minigameIsActive then
+            local ok, err = pcall(checkScoreAndAdjustActions)
+            if not ok then warn("Error in checkScoreAndAdjustActions: " .. tostring(err)) end
+
+            -- handle start button (for TreasureDefenseExplainerApp)
+            local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
+            if tda and tda.Enabled then
+                local startScreen = tda:FindFirstChild("StartScreen")
+                if startScreen and startScreen.Visible then
+                    local depthBtn = startScreen:FindFirstChild("DepthButton")
+                    if depthBtn and depthBtn.Visible and depthBtn.Active then
+                        local success, err = pcall(clickButton, depthBtn)
+                        if not success then warn("Error clicking DepthButton: " .. tostring(err)) end
+                        hasClickedStartButton = true
+                        log("[TIME] Minigame start button pressed.")
+                    end
+                end
+            end
+            if not (playerGui:FindFirstChild("TreasureDefenseExplainerApp") and playerGui.TreasureDefenseExplainerApp.Enabled) then
+                hasClickedStartButton = false
+            end
+
+            if hotbarSpamActive then
+                local ok, err = pcall(handleHotbarAbilities)
+                if not ok then warn("Error in handleHotbarAbilities: " .. tostring(err)) end
+                wait(0.1)
+            end
+
+            -- Only teleport to raiders (if this feature is active)
+            if teleportToRaidersActive then
+                local ok, err = pcall(handleTeleportToModels)
+                if not ok then warn("Error in handleTeleportToModels: " .. tostring(err)) end
+                wait(0.005) -- Keep a small wait to prevent excessive teleport calls
+            end
+
+        else
+            -- Not in minigame: handle start button again if needed
+            local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
+            if tda and tda.Enabled then
+                local startScreen = tda:FindFirstChild("StartScreen")
+                if startScreen and startScreen.Visible then
+                    local depthBtn = startScreen:FindFirstChild("DepthButton")
+                    if depthBtn and depthBtn.Visible and depthBtn.Active then
+                        local success, err = pcall(clickButton, depthBtn)
+                        if not success then warn("Error clicking DepthButton: " .. tostring(err)) end
+                        hasClickedStartButton = true
+                        log("[TIME] Minigame start button pressed (outside active minigame).")
+                    end
+                end
+            end
+            if not (playerGui:FindFirstChild("TreasureDefenseExplainerApp") and playerGui.TreasureDefenseExplainerApp.Enabled) then
+                hasClickedStartButton = false
+            end
+            if not scoreIncreasingActionsAllowed then
+                scoreIncreasingActionsAllowed = true
+                log("Minigame inactive, resetting score actions.")
+            end
+            wait(2) -- Wait longer when minigame is inactive
+        end
+
+        -- --- Anti-AFK noticeable rotation and movement ---
+        local currentCharacter, hrp, currentHumanoid = getCharacterAndHRP()
+        if hrp and currentHumanoid and currentHumanoid.Health > 0 then -- Only anti-AFK if alive
+            local success, err = pcall(function()
+                -- Generate a random axis
+                local axisX = math.random(-1, 1)
+                local axisY = math.random(-1, 1)
+                local axisZ = math.random(-1, 1)
+                -- Random angle between 5 and 20 degrees (~0.087 to 0.349 radians)
+                local angleDeg = math.random(5, 20)
+                local angleRad = math.rad(angleDeg)
+                -- Normalize axis
+                local axisLen = math.sqrt(axisX^2 + axisY^2 + axisZ^2)
+                if axisLen > 0 then
+                    axisX, axisY, axisZ = axisX/axisLen, axisY/axisLen, axisZ/axisLen
+                else
+                    axisX, axisY, axisZ = 0, 1, 0 -- fallback axis
+                end
+                local rotationCFrame = CFrame.fromAxisAngle(Vector3.new(axisX, axisY, axisZ), angleRad)
+                -- Random small positional shift
+                local shiftX = math.random(-0.2, 0.2)
+                local shiftY = math.random(-0.2, 0.2)
+                local shiftZ = math.random(-0.2, 0.2)
+                local shiftVec = Vector3.new(shiftX, shiftY, shiftZ)
+                -- Randomly choose to rotate, shift, or both
+                local actionType = math.random(1,3)
+                if actionType == 1 then
+                    hrp.CFrame = hrp.CFrame * rotationCFrame
+                elseif actionType == 2 then
+                    hrp.CFrame = hrp.CFrame * CFrame.new(shiftVec)
+                else
+                    hrp.CFrame = hrp.CFrame * rotationCFrame * CFrame.new(shiftVec)
+                end
+            end)
+            if not success then
+                warn("Enhanced movement error: " .. tostring(err))
+            end
+        end
+    else
+        wait(1) -- Wait longer when script is disabled to reduce CPU usage
+    end
+    wait(0.01) -- Small wait to prevent excessive looping
+end
