@@ -1,0 +1,305 @@
+print("--- Script Starting: Initializing Variables ---")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+print("Character loaded:", character.Name)
+local humanoid = character:WaitForChild("Humanoid")
+print("Humanoid loaded.")
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+print("HumanoidRootPart loaded.")
+
+-- Early check for Workspace.Interiors
+local interiorsFolder = Workspace:FindFirstChild("Interiors")
+if not interiorsFolder or not (interiorsFolder:IsA("Folder") or interiorsFolder:IsA("Model")) then
+    warn("!!! SCRIPT ABORTED: 'Workspace.Interiors' NOT FOUND or is not a valid container (Folder/Model). No automated features will run. !!!")
+    return
+end
+print("'Workspace.Interiors' found. Proceeding with interior search.")
+
+-- Find interior model
+local targetInterior = nil
+for _, interior in ipairs(interiorsFolder:GetChildren()) do
+    if string.find(interior.Name, "CoconutBonkInterior") then
+        targetInterior = interior
+        break
+    end
+end
+
+if not targetInterior then
+    warn("No interior matching 'CoconutBonkInterior' found.")
+    return
+end
+
+local ropeStartPart = nil
+
+local function printAndGetPath()
+    local gameFolder = targetInterior:FindFirstChild("Game")
+    if not gameFolder then
+        warn("Game folder not found inside interior.")
+        return
+    end
+
+    local binsFolder = gameFolder:FindFirstChild("Bins")
+    if not binsFolder then
+        warn("Bins folder not found.")
+        return
+    end
+
+    local boatsFolder = binsFolder:FindFirstChild("Boats")
+    if not boatsFolder then
+        warn("Boats folder not found.")
+        return
+    end
+
+    -- Print second child in Boats
+    local children = boatsFolder:GetChildren()
+    if #children >= 2 then
+        print("Second child in Boats:", children[2]:GetFullName())
+    else
+        print("Less than 2 children in Boats")
+    end
+
+    -- Print and store RopeStart inside the 'Boat' model
+    local boat = boatsFolder:FindFirstChild("Boat")
+    if boat then
+        local ropeStart = boat:FindFirstChild("RopeStart")
+        if ropeStart then
+            print("Boat's RopeStart:", ropeStart:GetFullName())
+            ropeStartPart = ropeStart -- Store for teleporting
+        else
+            print("RopeStart not found in Boat")
+        end
+    else
+        print("Boat model not found in Boats.")
+    end
+end
+
+printAndGetPath()
+
+local function findTargetPartDynamic(pathComponents)
+    local currentParent = Workspace
+    local constructedPathString = "workspace"
+    for i, component in ipairs(pathComponents) do
+        local foundChild = nil
+        if type(component) == "string" then
+            foundChild = currentParent:FindFirstChild(component)
+            if not foundChild and i == 2 and currentParent.Name == "Interiors" and component == "Game" then
+                for _, modelChild in ipairs(currentParent:GetChildren()) do
+                    if modelChild:IsA("Model") then
+                        local nestedGame = modelChild:FindFirstChild("Game")
+                        if nestedGame then
+                            foundChild = nestedGame
+                            break
+                        end
+                    end
+                end
+            end
+            if foundChild then
+                if constructedPathString ~= "workspace" then
+                    constructedPathString = constructedPathString .. "."
+                end
+                constructedPathString = constructedPathString .. foundChild.Name
+            end
+        elseif type(component) == "table" and component.type == "index" then
+            local children = currentParent:GetChildren()
+            if children[component.value] then
+                foundChild = children[component.value]
+                constructedPathString = constructedPathString .. ":GetChildren()[" .. component.value .. "]"
+            else
+                warn("Child at index " .. component.value .. " not found in " .. currentParent.Name)
+            end
+        end
+        if not foundChild then
+            warn("Component '" .. tostring(component) .. "' not found in " .. currentParent.Name)
+            return nil, "ComponentNotFound"
+        end
+        currentParent = foundChild
+    end
+    if currentParent and currentParent:IsA("BasePart") then
+        return currentParent, constructedPathString
+    end
+    return nil, "NotABasePart"
+end
+
+-- Set your desired hover height for stable floating
+local HoverHeight = nil -- Will set during first toggle
+
+local isNoclipping = false
+local isFloating = false
+local originalWalkSpeed = humanoid.WalkSpeed
+local originalJumpPower = humanoid.JumpPower
+local originalAutoJumpEnabled = humanoid.AutoJumpEnabled
+
+local function setCharacterCollisions(canCollide)
+    for _, part in ipairs(character:GetChildren()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = canCollide
+        end
+    end
+end
+
+local function activateNoclip()
+    if not isNoclipping then
+        isNoclipping = true
+        print("[Utility] Noclip: ACTIVATING AUTOMATICALLY.")
+        humanoid.WalkSpeed = 40
+        humanoid.JumpPower = 0
+        humanoid.AutoJumpEnabled = false
+        setCharacterCollisions(false)
+        print("[Utility] Noclip: AUTOMATICALLY ON.")
+    end
+end
+
+local function toggleFloating()
+    isFloating = not isFloating
+    if isFloating then
+        print("[Utility] Floating: ON (Stable in-place floating).")
+        local bodyPosition = humanoidRootPart:FindFirstChild("WRDBodyPosition")
+        if not bodyPosition then
+            bodyPosition = Instance.new("BodyPosition")
+            bodyPosition.Name = "WRDBodyPosition"
+            bodyPosition.Parent = humanoidRootPart
+        end
+        -- Set hover height to current height if not set yet
+        if not HoverHeight then
+            HoverHeight = humanoidRootPart.CFrame.Position.Y
+        end
+        -- Set target position (X,Z stay same, Y fixed)
+        local currentPos = humanoidRootPart.CFrame.Position
+        bodyPosition.Position = Vector3.new(currentPos.X, HoverHeight, currentPos.Z)
+        bodyPosition.MaxForce = Vector3.new(1e4, 1e4, 1e4)
+        bodyPosition.P = 1e4
+        bodyPosition.D = 100
+        humanoid.WalkSpeed = 0
+        humanoid.Sit = false
+        print("[Utility] Floating: ON at height " .. HoverHeight)
+    else
+        print("[Utility] Floating: OFF.")
+        local bodyPosition = humanoidRootPart:FindFirstChild("WRDBodyPosition")
+        if bodyPosition then
+            bodyPosition:Destroy()
+            print("[Utility] Destroyed BodyPosition.")
+        end
+        humanoid.WalkSpeed = originalWalkSpeed
+        print("[Utility] Floating: OFF.")
+    end
+end
+
+local function performFloatTeleport(targetPart)
+    if targetPart and targetPart.part and targetPart.part:IsA("BasePart") then
+        local partInstance = targetPart.part
+        local targetPosition = partInstance.CFrame.Position
+        local targetHeight = HoverHeight or (targetPosition.Y + humanoidRootPart.Size.Y / 2 + 0.1)
+        -- Teleport
+        humanoidRootPart.CFrame = CFrame.new(targetPosition + Vector3.new(0, humanoidRootPart.Size.Y / 2 + 0.1, 0))
+        print("Teleported to " .. partInstance.Name)
+
+        -- Set hover height if not already set
+        if not HoverHeight then
+            HoverHeight = targetPosition.Y + humanoidRootPart.Size.Y / 2 + 0.1
+        end
+
+        -- Reapply the BodyPosition to keep floating in place
+        if not isFloating then
+            toggleFloating()
+        else
+            local bodyPosition = humanoidRootPart:FindFirstChild("WRDBodyPosition")
+            if not bodyPosition then
+                bodyPosition = Instance.new("BodyPosition")
+                bodyPosition.Name = "WRDBodyPosition"
+                bodyPosition.Parent = humanoidRootPart
+            end
+            bodyPosition.Position = Vector3.new(targetPosition.X, HoverHeight, targetPosition.Z)
+            bodyPosition.MaxForce = Vector3.new(1e4, 1e4, 1e4)
+            bodyPosition.P = 1e4
+            bodyPosition.D = 100
+            humanoid.WalkSpeed = 0
+            humanoid.Sit = false
+        end
+    else
+        warn("Invalid target part for teleport.")
+    end
+end
+
+local function formatPathComponentsForPrint(componentsTable)
+    local formatted = {}
+    for _, comp in ipairs(componentsTable) do
+        if type(comp) == "string" then
+            table.insert(formatted, comp)
+        elseif type(comp) == "table" and comp.type == "index" then
+            table.insert(formatted, "GetChildren()[" .. comp.value .. "]")
+        else
+            table.insert(formatted, tostring(comp))
+        end
+    end
+    return table.concat(formatted, ".")
+end
+
+-- Define your teleport paths (excluding invalid 'Sailboat')
+local TeleportLocationPaths = {
+    {"Interiors", "Game", "Bins", "Boats", "Boat", "RopeStart"},
+    {"Interiors", "Game", "Bins", "Boats", {type = "index", value = 2}, "RopeStart"}
+}
+local TeleportDelay = 3
+local ValidTeleportTargets = {}
+
+local allPathsValid = true
+for i, path in ipairs(TeleportLocationPaths) do
+    print("Validating path " .. i)
+    local targetPart, debugStr = findTargetPartDynamic(path)
+    if targetPart then
+        table.insert(ValidTeleportTargets, {part = targetPart, debugPath = debugStr})
+        print("Path " .. i .. " validated: " .. debugStr)
+    else
+        warn("Critical error: Path " .. i .. " invalid: " .. debugStr)
+        allPathsValid = false
+        break
+    end
+end
+
+if not allPathsValid then
+    warn("Some teleport paths are invalid. Teleportation disabled.")
+    return
+end
+
+print("Ready to teleport to RopeStart at:", ropeStartPart and ropeStartPart:GetFullName() or "None.")
+
+-- Start teleport cycle
+task.spawn(function()
+    print("Starting teleport...")
+    local currentIndex = 1
+    while true do
+        local target = ValidTeleportTargets[currentIndex]
+        print("Teleporting to target " .. currentIndex)
+        performFloatTeleport(target)
+        currentIndex = currentIndex + 1
+        if currentIndex > #ValidTeleportTargets then currentIndex = 1 end
+        task.wait(TeleportDelay)
+    end
+end)
+
+-- Toggle floating with O key
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed then
+        if input.KeyCode == Enum.KeyCode.O then
+            toggleFloating()
+        end
+    end
+end)
+
+-- Cleanup on death
+humanoid.Died:Connect(function()
+    print("[Utility] Character Died: Resetting states.")
+    isNoclipping = false
+    if isFloating then
+        local bodyVelocity = humanoidRootPart:FindFirstChild("WRDBodyPosition")
+        if bodyVelocity then
+            bodyVelocity:Destroy()
+            print("[Utility] Destroyed BodyPosition.")
+        end
+        isFloating = false
+    end
+end)
