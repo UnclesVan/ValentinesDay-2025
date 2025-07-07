@@ -767,6 +767,12 @@ local function createConsoleUI()
     -- Changelog Content
     changelogLabel.Text = [[
 Changelog:
+v66 (2025-07-07):
+- Coming Soon Adding Week 2 of Summer Fest.
+
+v65 (2025-07-07):
+- Coming Soon Adding Boat Teleportation.
+
 v64 (2025-07-07):
 - Adjusted console UI size to be slightly smaller as requested.
 
