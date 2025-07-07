@@ -1,12 +1,14 @@
 -- Full Script with correct order and consolidated UI and game logic
 
-print("Script Version: 2025-07-07_ConsolidatedUIAndLogic_v64")
+print("Script Version: 2025-07-07_ConsolidatedUIAndLogic_v70")
 
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 
 -- Ensure character and humanoidrootpart are available from the start, with robust checks
 local character = player.Character
@@ -22,10 +24,13 @@ local autoCloseRewardActive = false -- New: State for auto close reward toggle
 local autoClickHotbarActive = false -- New: State for auto click hotbar toggle
 local rewardsAutoClickActive = false -- State for auto click rewards button
 
+-- NEW: Toggle UI State
+local isAdoptMeActive = true -- Initial state for the AdoptMe/Sumar toggle
+
 -- --- CONFIGURATION ---
 local FROSTCLAWS_HOTBAR_APP_NAME = "MinigameHotbarApp"
 local DROP_BUTTON_NAME = "DropButton"
-local SWORD_BUTTON_NAME = "SwordButton" -- Corrected from Sword_Button based on your later script
+local SWORD_BUTTON_NAME = "SwordButton"
 local EXCLUDED_MODEL_KEYWORDS = {"parrot", "cage"} -- Models to exclude from teleportation
 local COCONUT_BONK_INTERIOR_BASE_NAME = "CoconutBonkInterior"
 local GOLD_PILE_GUARD_RADIUS = 30 -- Radius around GoldPile to detect raiders
@@ -36,10 +41,38 @@ local MAX_CONSOLE_LINES = 20
 local LOG_FINDING_COOLDOWN = 1
 local REWARDS_BUTTON_PATH = "MinigameRewardsApp.Body.Button" -- Path to the rewards button
 
+-- NEW: Toggle UI Configuration
+local TOGGLE_SCREEN_GUI_NAME = "AdoptMeToggleGui"
+local TOGGLE_FRAME_NAME = "ToggleCircleFrame"
+local ADOPTME_TEXT_NAME = "AdoptMeText"
+local SUMAR_TEXT_NAME = "SumarText"
+local CLICK_BUTTON_NAME = "ClickButton"
+
+local TOGGLE_SIZE = UDim2.new(0, 100, 0, 100) -- Size of the circular frame (e.g., 100x100 pixels)
+local INITIAL_TOGGLE_POSITION = UDim2.new(0.5, 0, 0.8, 0) -- Centered horizontally, 80% down the screen
+local ANCHOR_POINT = Vector2.new(0.5, 0.5) -- Anchor the frame from its center
+
+local ADOPTME_COLOR = Color3.fromRGB(255, 100, 100) -- Light red for ADOPTME state
+local SUMAR_COLOR = Color3.fromRGB(50, 150, 255)    -- Blue for SUMAR state
+
+local BOUNCE_OFFSET_Y = 10 -- How much the toggle bobs up and down
+local BOUNCE_SPEED = 3     -- Speed of the bobbing animation
+
 -- --- INTERNAL ---
 local consoleTextLabel = nil -- Reference to the TextLabel for logging
 local lastLogTime = {} -- For logFinding cooldowns
 local findingMinigameCoroutine = nil -- To manage the "finding minigame..." loop
+
+-- NEW: Toggle UI Element References (now global within this script's scope)
+local toggleScreenGui: ScreenGui
+local toggleFrame: Frame
+local adoptMeText: TextLabel
+local sumarText: TextLabel
+local clickButton: TextButton
+
+-- NEW: Reference to the main console ScreenGui itself
+local mainConsoleGui: ScreenGui
+
 
 -- --- FUNCTIONS ---
 
@@ -175,7 +208,7 @@ local function clickButton(button)
     end
 end
 
--- NEW: Specific click logic for Auto Close Reward button, as provided by user (now uses global log)
+-- Specific click logic for Auto Close Reward button, as provided by user (now uses global log)
 local function fireSpecificClickEvents(buttonInstance)
     if buttonInstance and buttonInstance:IsA("GuiButton") and buttonInstance.Parent then -- Check if it's a valid GuiButton and still exists
         -- Attempt to fire MouseButton1Down, MouseButton1Click, and MouseButton1Up
@@ -468,7 +501,7 @@ local function stopFindingMinigame()
     end
 end
 
--- NEW: Function to handle auto close reward logic (now uses global log)
+-- Function to handle auto close reward logic (now uses global log)
 local function handleAutoCloseReward()
     if not autoCloseRewardActive then return end
 
@@ -491,7 +524,7 @@ local function handleAutoCloseReward()
     end
 end
 
--- NEW: Function to handle auto click hotbar logic (now uses global log)
+-- Function to handle auto click hotbar logic (now uses global log)
 local function handleAutoClickHotbar()
     if autoClickHotbarActive then
         log("Executing Auto Click Hotbar script...")
@@ -542,10 +575,49 @@ local function makeDraggable(guiElement, targetFrame)
     end)
 
     UserInputService.InputEnded:Connect(function(input)
-        -- Corrected the typo: Enum.UserInputType.UserInputType.MouseButton1 -> Enum.UserInputType.MouseButton1
         if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
             dragging = false
         end
+    end)
+end
+
+-- NEW: Function to update the visibility and color of the toggle (from AdoptMe/Sumar UI Toggle)
+local function updateAdoptMeToggleState()
+    if isAdoptMeActive then
+        adoptMeText.Visible = true
+        sumarText.Visible = false
+        toggleFrame.BackgroundColor3 = ADOPTME_COLOR
+        -- Turn OFF MainConsole UI by setting Enabled to false
+        if mainConsoleGui then mainConsoleGui.Enabled = false end
+        log("MainConsole UI turned OFF (ADOPTME mode).")
+    else
+        adoptMeText.Visible = false
+        sumarText.Visible = true
+        toggleFrame.BackgroundColor3 = SUMAR_COLOR
+        -- Turn ON MainConsole UI by setting Enabled to true
+        if mainConsoleGui then mainConsoleGui.Enabled = true end
+        log("MainConsole UI turned ON (SUMAR mode).")
+    end
+end
+
+-- NEW: Function to handle the toggle click (from AdoptMe/Sumar UI Toggle)
+local function onAdoptMeToggleClicked()
+    isAdoptMeActive = not isAdoptMeActive -- Flip the state
+    updateAdoptMeToggleState() -- Update UI based on new state (including game UI visibility)
+end
+
+-- NEW: Start the bobbing animation (from AdoptMe/Sumar UI Toggle)
+local function startAdoptMeBobbingAnimation()
+    -- Get the current position after setup
+    local initialY = toggleFrame.Position.Y.Scale
+    local initialYOffset = toggleFrame.Position.Y.Offset
+
+    RunService.RenderStepped:Connect(function(deltaTime)
+        -- Calculate the new Y offset using sine wave for smooth bobbing
+        -- Add the bobbing offset to the initial pixel offset
+        local newYOffset = initialYOffset + (math.sin(os.clock() * BOUNCE_SPEED) * BOUNCE_OFFSET_Y)
+        toggleFrame.Position = UDim2.new(toggleFrame.Position.X.Scale, toggleFrame.Position.X.Offset,
+                                         initialY, newYOffset)
     end)
 end
 
@@ -554,10 +626,10 @@ end
 -- This function now creates the single consolidated console UI
 local function createConsoleUI()
     log("Creating consolidated console UI...")
-    local gui = Instance.new("ScreenGui", playerGui)
-    gui.Name = "MainConsole"
+    mainConsoleGui = Instance.new("ScreenGui", playerGui) -- Assign to global variable
+    mainConsoleGui.Name = "MainConsole"
 
-    local frame = Instance.new("Frame", gui)
+    local frame = Instance.new("Frame", mainConsoleGui) -- Parent to mainConsoleGui
     frame.Size = UDim2.new(0.6, 0, 0.5, 0) -- Adjusted size to be smaller
     frame.Position = UDim2.new(0.2, 0, 0.25, 0) -- Adjusted position to keep it centered
     frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
@@ -661,7 +733,7 @@ local function createConsoleUI()
 
     -- Connect close button
     closeBtn.MouseButton1Click:Connect(function()
-        gui:Destroy()
+        mainConsoleGui:Destroy() -- Destroy the main console GUI
         consoleTextLabel = nil -- Clear reference
         scriptEnabled = false -- Ensure main script is disabled on close
         log("Main Console closed. All scripts disabled.")
@@ -731,7 +803,7 @@ local function createConsoleUI()
 
     log("Console UI created.")
     -- Add the script version to the console log immediately after creation
-    log("Script Version: 2025-07-07_ConsolidatedUIAndLogic_v64")
+    log("Script Version: 2025-07-07_ConsolidatedUIAndLogic_v70") -- Updated version number
 
     -- NEW: Changelog Frame
     local changelogFrame = Instance.new("Frame", contentArea)
@@ -767,11 +839,18 @@ local function createConsoleUI()
     -- Changelog Content
     changelogLabel.Text = [[
 Changelog:
-v66 (2025-07-07):
-- Coming Soon Adding Week 2 of Summer Fest.
+v70 (2025-07-07):
+- Fixed AdoptMe/Sumar toggle disappearing by making it a separate ScreenGui.
+- AdoptMe/Sumar UI toggle now correctly controls the Enabled property of the MainConsole UI.
+
+v69 (2025-07-07):
+- AdoptMe/Sumar UI toggle now controls the Enabled property of the MainConsole UI itself.
+
+v68 (2025-07-07):
+- Integrated AdoptMe/Sumar UI toggle functionality. Clicking the circular button now hides/shows the main game UIs.
 
 v65 (2025-07-07):
-- Coming Soon Adding Boat Teleportation.
+- Added placeholder entries for future updates (Boat Teleportation, Summer Fest Week 2).
 
 v64 (2025-07-07):
 - Adjusted console UI size to be slightly smaller as requested.
@@ -879,15 +958,81 @@ v56 (2025-07-07):
             log("Auto Click Hotbar: OFF (Note: External script may continue to run if already loaded.)")
         end
     end)
-
-    -- Removed manual positioning as UIListLayout handles it
 end
+
+-- NEW: Separate function to create and manage the AdoptMe/Sumar toggle UI
+local function createAdoptMeToggleUI()
+    log("Creating AdoptMe/Sumar toggle UI...")
+    toggleScreenGui = Instance.new("ScreenGui", playerGui) -- Parent directly to PlayerGui
+    toggleScreenGui.Name = TOGGLE_SCREEN_GUI_NAME
+
+    toggleFrame = Instance.new("Frame")
+    toggleFrame.Name = TOGGLE_FRAME_NAME
+    toggleFrame.Parent = toggleScreenGui
+
+    adoptMeText = Instance.new("TextLabel")
+    adoptMeText.Name = ADOPTME_TEXT_NAME
+    adoptMeText.Parent = toggleFrame
+
+    sumarText = Instance.new("TextLabel")
+    sumarText.Name = SUMAR_TEXT_NAME
+    sumarText.Parent = toggleFrame
+
+    clickButton = Instance.new("TextButton")
+    clickButton.Name = CLICK_BUTTON_NAME
+    clickButton.Parent = toggleFrame
+
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0.5, 0)
+    uiCorner.Parent = toggleFrame
+
+    toggleFrame.Size = TOGGLE_SIZE
+    toggleFrame.Position = INITIAL_TOGGLE_POSITION
+    toggleFrame.AnchorPoint = ANCHOR_POINT
+    toggleFrame.BorderSizePixel = 0
+    toggleFrame.ClipsDescendants = true
+
+    local commonProperties = {
+        Size = UDim2.new(1, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1,
+        TextScaled = true,
+        TextWrapped = true,
+        Font = Enum.Font.SourceSansBold,
+        TextColor3 = Color3.new(1, 1, 1),
+        ZIndex = 2
+    }
+
+    adoptMeText.Text = "ADOPTME"
+    for prop, value in pairs(commonProperties) do
+        adoptMeText[prop] = value
+    end
+
+    sumarText.Text = "SUMAR🏴‍☠️"
+    for prop, value in pairs(commonProperties) do
+        sumarText[prop] = value
+    end
+
+    clickButton.Size = UDim2.new(1, 0, 1, 0)
+    clickButton.Position = UDim2.new(0, 0, 0, 0)
+    clickButton.BackgroundTransparency = 1
+    clickButton.Text = ""
+    clickButton.ZIndex = 3
+
+    clickButton.MouseButton1Click:Connect(onAdoptMeToggleClicked)
+
+    updateAdoptMeToggleState()
+    startAdoptMeBobbingAnimation()
+    log("AdoptMe/Sumar toggle UI created and initialized.")
+end
+
 
 -- Initial character and HRP retrieval using the robust function
 character, humanoidRootPart = getCharacterAndHRP()
 
 -- --- INITIALIZATION ---
-createConsoleUI() -- Create the single consolidated console UI
+createConsoleUI() -- Create the main consolidated console UI
+createAdoptMeToggleUI() -- Create the separate AdoptMe/Sumar toggle UI
 task.wait(0.1) -- Small wait to ensure UI elements are fully rendered and accessible
 initialTeleport() -- Perform initial teleport regardless of scriptEnabled state
 
