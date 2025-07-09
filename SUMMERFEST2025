@@ -1,3 +1,8 @@
+loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/ValentinesDay-2025/refs/heads/main/SummerfestAutoPlayer')))()
+
+wait("1")
+
+
 -- Full Script with correct order and consolidated UI and game logic
 
 print("Script Version: 2025-07-07_ConsolidatedUIAndLogic_v70")
