@@ -1,3 +1,5 @@
-loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/ValentinesDay-2025/refs/heads/main/SUMMERFEST')))()
-wait("0.1")
 loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/ValentinesDay-2025/refs/heads/main/SummerfestAutoPlayer')))()
+wait("0.1")
+loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/ValentinesDay-2025/refs/heads/main/SUMMERFEST')))()
+
+
