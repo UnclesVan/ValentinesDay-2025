@@ -1,5 +1,5 @@
 
-loadstring(game:HttpGetAsync('https://pastebin.com/raw/WgkcDYUs'))()
+--loadstring(game:HttpGetAsync('https://pastebin.com/raw/WgkcDYUs'))()
 
 
 
