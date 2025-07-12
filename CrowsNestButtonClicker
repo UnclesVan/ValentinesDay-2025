@@ -1,179 +1,99 @@
---[[
-    Roblox Auto-Clicker and Frame Cleaner Script
-
-    This script is designed to:
-    1. Simulate clicks on a specific GUI button.
-    2. Continuously clear (destroy) ALL instances within another specified GUI Frame,
-       including descendants (nested elements).
-
-    The 'clickButton' function fires necessary events (MouseButton1Down,
-    MouseButton1Click, MouseButton1Up) to mimic user interaction.
-    The 'clearFrameChildren' function iterates through a given frame's descendants
-    and destroys them, useful for cleaning up dynamically added UI elements that
-    might be nested.
-
-    This script should be placed as a LocalScript, typically under
-    StarterPlayerScripts or directly within a GUI element if it's meant
-    to be triggered by a local event.
-]]
-
--- Function to simulate click events on a GUI button
--- @param button: The GUI button object to click.
-local function clickButton(button)
-    -- Check if the button object exists and is still in the hierarchy
-    if button and button.Parent then
-        print("Button found! Attempting to click:", button.Name)
-
-        -- Attempt to fire MouseButton1Down connections
-        for _, connection in pairs(getconnections(button.MouseButton1Down)) do
-            connection:Fire()
-        end
-        wait(0.05) -- Small delay
-
-        -- Attempt to fire MouseButton1Click connections
-        for _, connection in pairs(getconnections(button.MouseButton1Click)) do
-            connection:Fire()
-        end
-        wait(0.05) -- Small delay
-
-        -- Attempt to fire MouseButton1Up connections
-        for _, connection in pairs(getconnections(button.MouseButton1Up)) do
-            connection:Fire()
-        end
-        print("Successfully clicked the button!")
-    else
-        warn("Click button not found or removed from path! Skipping click.")
-    end
-end
-
--- Function to clear all descendants from a specified GUI Frame
--- This will destroy all instances inside the frame, no matter how deeply nested.
--- @param frame: The GUI Frame whose descendants are to be destroyed.
-local function clearFrameChildren(frame)
-    -- Ensure the frame exists and is in the hierarchy
-    if frame and frame.Parent then
-        -- Use GetDescendants() to get all instances nested inside the frame,
-        -- not just direct children.
-        local descendants = frame:GetDescendants()
-        print(string.format("clearFrameChildren called for %s. Found %d descendants.", frame.Name, #descendants))
-
-        if #descendants > 0 then
-            print("Clearing all descendants from frame:", frame.Name)
-            for _, instance in ipairs(descendants) do
-                -- It's good practice to ensure the instance is still a descendant
-                -- before destroying, though GetDescendants typically returns current ones.
-                -- Also, ensure we don't try to destroy the frame itself.
-                if instance and instance.Parent and instance.Parent:IsDescendantOf(frame) then
-                    instance:Destroy()
-                    print("Destroyed descendant:", instance.Name)
-                end
-            end
-        else
-            print("No descendants to clear in frame:", frame.Name)
-        end
-    else
-        warn("Target frame not found or removed from path! Cannot clear descendants.")
-    end
-end
-
-
--- Get the LocalPlayer and PlayerGui service
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") -- Ensure PlayerGui is loaded
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Define paths to the target button and the target frame for cleanup
-local buttonPath = {
-    "InteractionsApp",
-    "BasicSelects",
-    "Template",
-    "TapButton"
-}
+-- Path to the frame to delete repeatedly
+local framePath = {"InteractionsApp", "ChoiceSelects"}
 
-local framePath = {
-    "InteractionsApp",
-    "ChoiceSelects",
-    "Frame"
-}
-
-local targetButton = nil
-local targetFrame = nil
-
-print("Attempting to find the target button and frame...")
-
--- Helper function to find an instance by path using WaitForChild
--- @param parent: The starting parent instance.
--- @param pathTable: A table of string names representing the path segments.
--- @param timeout: The maximum time to wait for each child.
--- @return: The found instance or nil if not found within timeout.
 local function findInstanceByPath(parent, pathTable, timeout)
-    local currentInstance = parent
-    for i, partName in ipairs(pathTable) do
-        local foundChild = currentInstance:WaitForChild(partName, timeout)
-        if foundChild then
-            currentInstance = foundChild
+    local current = parent
+    for _, part in ipairs(pathTable) do
+        print("Looking for:", part)
+        local success, result = pcall(function()
+            return current:WaitForChild(part, timeout)
+        end)
+        if success and result then
+            current = result
+            print("Found:", current:GetFullName())
         else
-            warn("Could not find part '" .. partName .. "' in path.")
+            warn("Could not find: " .. part)
             return nil
         end
     end
-    return currentInstance
+    return current
 end
 
--- Find the target button
-local successButton, foundButton = pcall(function()
-    return findInstanceByPath(PlayerGui, buttonPath, 15) -- Wait up to 15 seconds for each part
-end)
+local choiceSelectsFrame = findInstanceByPath(PlayerGui, framePath, 15)
 
-if successButton and foundButton then
-    targetButton = foundButton
-    print("Target button found:", targetButton.Name)
-else
-    warn("Could not find the target button after multiple attempts or within timeout. Auto-clicker will not start.")
-    if not successButton then
-        warn("Error during button lookup:", foundButton)
-    end
-end
-
--- Find the target frame for cleanup
-local successFrame, foundFrame = pcall(function()
-    return findInstanceByPath(PlayerGui, framePath, 15) -- Wait up to 15 seconds for each part
-end)
-
-if successFrame and foundFrame then
-    targetFrame = foundFrame
-    print("Target frame for cleanup found:", targetFrame.Name)
-else
-    warn("Could not find the target frame for cleanup after multiple attempts or within timeout. Cleanup will not run.")
-    if not successFrame then
-        warn("Error during frame lookup:", foundFrame)
-    end
-end
-
-
--- Main loop to continuously click the button and clean the frame
-if targetButton then -- Only start the loop if the button was found
-    print("Starting auto-clicker and frame cleaner loop...")
-    -- Reduced the wait time to 0.1 seconds to make the cleanup more frequent.
-    -- This might help if elements are being added back very quickly.
-    while task.wait(0.1) do
-        -- Click the button if it's still valid
-        if targetButton.Parent then
-            clickButton(targetButton)
-        else
-            warn("Target button removed from hierarchy. Stopping auto-clicker.")
-            break -- Exit the loop if the button is no longer valid
-        end
-
-        -- Clear the frame if it's found and still valid
-        if targetFrame and targetFrame.Parent then
-            clearFrameChildren(targetFrame)
-        else
-            warn("Target frame removed from hierarchy. Stopping frame cleanup.")
-            -- If the frame is gone, we might still want to click the button,
-            -- so we don't break the loop here unless the button is also gone.
+-- Function to find all TapButtons in the entire PlayerGui hierarchy
+local function findAllTapButtons()
+    local tapButtons = {}
+    for _, obj in ipairs(PlayerGui:GetDescendants()) do
+        if obj.Name == "TapButton" and obj:IsA("GuiObject") then
+            table.insert(tapButtons, obj)
         end
     end
-else
-    print("Auto-clicker loop will not start because the target button was not found.")
+    return tapButtons
+end
+
+local function clickButtonAlt(button)
+    if not (button and button.Parent) then
+        print("Button invalid or no parent.")
+        return
+    end
+    print("Clicking:", button:GetFullName())
+
+    if typeof(button) == "Instance" and button:IsA("TextButton") then
+        print("Using :Activate()")
+        pcall(function()
+            button:Activate()
+        end)
+        return
+    elseif typeof(button) == "Instance" and button:FindFirstChild("Activated") then
+        print("Firing :Activated")
+        pcall(function()
+            button.Activated:Fire()
+        end)
+        return
+    end
+
+    -- fallback to firing mouse events
+    local success, err = pcall(function()
+        for _, conn in pairs(getconnections(button.MouseButton1Down) or {}) do
+            conn:Fire()
+        end
+        wait(0.05)
+        for _, conn in pairs(getconnections(button.MouseButton1Click) or {}) do
+            conn:Fire()
+        end
+        wait(0.05)
+        for _, conn in pairs(getconnections(button.MouseButton1Up) or {}) do
+            conn:Fire()
+        end
+        print("Fired mouse events")
+    end)
+    if not success then
+        print("Error firing events:", err)
+    end
+end
+
+while true do
+    -- Destroy the frame if it exists
+    if choiceSelectsFrame and choiceSelectsFrame.Parent then
+        choiceSelectsFrame:Destroy()
+        print("Destroyed ChoiceSelects frame.")
+        choiceSelectsFrame = nil -- prevent repeated attempts
+    end
+
+    -- Find all TapButtons dynamically
+    local tapButtons = findAllTapButtons()
+
+    -- Click each one
+    for _, btn in ipairs(tapButtons) do
+        if btn and btn.Parent then
+            clickButtonAlt(btn)
+        end
+    end
+
+    wait(0.5)
 end
