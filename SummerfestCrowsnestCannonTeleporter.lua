@@ -36,10 +36,10 @@ loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoPtMe-/r
 -- If loadstring failed, this delay won't help.
 task.wait(2) -- Added a small delay here as per your comment, using task.wait for modern Roblox.
 
----
-## AFK Disconnection Prevention (RemoteEvent Destruction)
+-- ====================================================================
+-- PART 1: AFK Disconnection Prevention (RemoteEvent Destruction)
+-- ====================================================================
 
----
 -- Define a variable to hold the ReplicatedStorage service.
 -- This is a core Roblox service used for client-server communication.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -65,7 +65,7 @@ local function destroyAFKTeleport()
 
     -- Now, try to find the target object *by its full literal name* inside the 'API' folder.
     -- This assumes the object's name literally contains the slashes.
-    local afkTeleportObject = apiFolder:WaitForChild(TARGET_OBJECT_NAME, 15) -- Increased timeout
+    local afkTeleportObject = apiFolder:WaitForChild(TARGET_OBJECT_FULL_NAME, 15) -- Increased timeout
     if not afkTeleportObject then
         warn("AFK Preventer: Failed to find object named '" .. TARGET_OBJECT_FULL_NAME .. "' inside '" .. API_FOLDER_NAME .. "'. Retrying...")
         return -- Exit if the target object isn't found
@@ -109,3 +109,117 @@ task.spawn(function()
         task.wait(1) -- Current delay is 1 second.
     end
 end)
+
+-- ====================================================================
+-- PART 2: Hotbar Button Clicking
+-- ====================================================================
+
+-- Essential Services
+local player = game:GetService("Players").LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui", 15) -- Increased timeout for PlayerGui
+
+if not playerGui then
+    warn("Hotbar Clicker: PlayerGui not found after 15 seconds. Script cannot proceed with button clicking.")
+    -- The AFK prevention part will continue to run in its own task.
+    return -- Exit this part of the script if PlayerGui isn't available
+end
+
+print("Hotbar Clicker: Script started successfully and PlayerGui found!")
+print("Hotbar Clicker: Starting continuous button finding and clicking loop.")
+
+-- Define the paths to the target buttons
+local dropButtonPath = "MinigameHotbarApp.Hotbar.DropButton.Button"
+local swordButtonPath = "MinigameHotbarApp.Hotbar.SwordButton.Button"
+
+-- Function to safely get a UI element with a timeout and explicit retries
+-- Returns the found instance, or nil if not found within all attempts
+local function getUIElement(base, fullPathString, timeoutPerAttempt, maxAttempts)
+    timeoutPerAttempt = timeoutPerAttempt or 0.2 -- How long to wait per attempt
+    maxAttempts = maxAttempts or 3               -- How many times to retry finding each part
+
+    local currentElement = base
+    local pathParts = string.split(fullPathString, ".")
+
+    for i, partName in ipairs(pathParts) do
+        local found = false
+        local attempts = 0
+        local elementToFind = partName
+
+        while not found and attempts < maxAttempts do
+            attempts = attempts + 1
+            local result = currentElement:WaitForChild(elementToFind, timeoutPerAttempt)
+
+            if result then
+                currentElement = result
+                found = true
+            else
+                -- No need to print retry messages here; the main loop will handle "Not all buttons found"
+            --    if i == #pathParts and attempts < maxAttempts then -- Only print retry if it's the last part and not out of attempts
+            --        print("Retrying (" .. attempts .. "/" .. maxAttempts .. ") to find '" .. elementToFind .. "' for path: " .. fullPathString)
+            --    elseif i == #pathParts and attempts == maxAttempts then
+            --        warn("Failed to find '" .. elementToFind .. "' for path '" .. fullPathString .. "' after " .. maxAttempts .. " attempts.")
+            --    end
+            end
+        end
+
+        if not found then
+            return nil -- If any part of the path is not found after maxAttempts, return nil
+        end
+    end
+    return currentElement
+end
+
+-- Function to simulate click events
+local function clickButton(buttonInstance)
+    if buttonInstance and buttonInstance.Parent then -- Check if the button exists and is still in the game hierarchy
+        print("Hotbar Clicker: Attempting to click: " .. buttonInstance.Name)
+        -- Attempt to fire MouseButton1Down, MouseButton1Click, and MouseButton1Up
+        -- This sequence attempts to mimic a full user click action
+        for _, connection in pairs(getconnections(buttonInstance.MouseButton1Down)) do
+            connection:Fire()
+        end
+        task.wait(0.05) -- Small delay between firing events for realism
+        for _, connection in pairs(getconnections(buttonInstance.MouseButton1Click)) do
+            connection:Fire()
+        end
+        task.wait(0.05)
+        for _, connection in pairs(getconnections(buttonInstance.MouseButton1Up)) do
+            connection:Fire()
+        end
+        print("Hotbar Clicker: Successfully sent click events to: " .. buttonInstance.Name)
+    else
+        warn("Hotbar Clicker: Click aborted: " .. (buttonInstance and buttonInstance.Name or "nil button") .. " is not valid or removed.")
+    end
+end
+
+local actionDelay = 0.5 -- Delay in seconds between clicking DropButton and SwordButton
+local findCycleDelay = 1 -- Delay if buttons are not found in a cycle
+
+-- Main loop to continuously find and click the buttons
+while true do
+    print("Hotbar Clicker: Finding hotbar button 1...")
+    local foundDropButton = getUIElement(playerGui, dropButtonPath)
+
+    print("Hotbar Clicker: Finding hotbar button 2...")
+    local foundSwordButton = getUIElement(playerGui, swordButtonPath)
+
+    if foundDropButton and foundSwordButton then
+        print("Hotbar Clicker: Found hotbar button 1: " .. foundDropButton.Name)
+        print("Hotbar Clicker: Found hotbar button 2: " .. foundSwordButton.Name)
+
+        -- Now that both are confirmed found, perform the clicks
+        clickButton(foundDropButton)
+        task.wait(actionDelay)
+
+        clickButton(foundSwordButton)
+        task.wait(actionDelay) -- Delay before checking again for the next cycle
+    else
+        -- If one or both buttons are not found, wait and try again
+        print("Hotbar Clicker: Not all buttons were found in this attempt. Retrying...")
+        task.wait(findCycleDelay)
+    end
+
+    task.wait(0.1) -- Small yield to prevent script from hogging resources
+end
+
+print("Hotbar Clicker: Script finished or stopped.")
