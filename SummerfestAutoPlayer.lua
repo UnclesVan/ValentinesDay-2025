@@ -5,7 +5,7 @@ local Fsys = require(game.ReplicatedStorage:WaitForChild("Fsys")).load
 local initFunction = Fsys("RouterClient").init
 
 -- Folder containing the remotes to track
-local remoteFolder = game.ReplicatedStorage:WaitForChild("API")
+local remoteFolder = game:GetService("ReplicatedStorage"):WaitForChild("API")
 
 -- A flag to ensure we print only once during the initial scan
 local printedOnce = false
@@ -68,7 +68,7 @@ local function displayDehashedMessage()
     local uiElement = game:GetService("Players").LocalPlayer.PlayerGui.HintApp.LargeTextLabel
     uiElement.Text = "Remotes has been Dehashed!"
     uiElement.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
-    wait(3)
+    task.wait(3)
     uiElement.Text = ""
     uiElement.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
 end
@@ -281,25 +281,34 @@ else
     if not ToolAPI_Unequip then
         warn("ToolAPI/Unequip RemoteFunction not found! Cannot unequip pets.")
     else
+        local MAX_RETRIES = 3 -- Define maximum retry attempts
         -- Loop through each pet ID and call the API with the specific layout
         for _, uniqueId in ipairs(allPetUniqueIds) do
-            local args = {
-                uniqueId,
-                {
-                    use_sound_delay = false,
-                    equip_as_last = false
-                }
-            }
-            print("Unequipping pet ID:", uniqueId)
-            local success_unequip, result_unequip = pcall(function()
-                return ToolAPI_Unequip:InvokeServer(unpack(args))
-            end)
-            if success_unequip then
-                print("Successfully unequipped pet ID: " .. uniqueId)
-            else
-                warn("Failed to unequip pet ID: " .. uniqueId .. " - " .. tostring(result_unequip))
+            local unequippedSuccessfully = false
+            for retryAttempt = 1, MAX_RETRIES do
+                print(string.format("Unequipping pet ID: %s (Attempt %d/%d)", uniqueId, retryAttempt, MAX_RETRIES))
+                local success_unequip, result_unequip = pcall(function()
+                    return ToolAPI_Unequip:InvokeServer(uniqueId, {
+                        use_sound_delay = false,
+                        equip_as_last = false
+                    })
+                end)
+
+                if success_unequip then
+                    print("Successfully unequipped pet ID: " .. uniqueId)
+                    unequippedSuccessfully = true
+                    break -- Exit retry loop on success
+                else
+                    warn("Failed to unequip pet ID: " .. uniqueId .. " - " .. tostring(result_unequip))
+                    if retryAttempt < MAX_RETRIES then
+                        task.wait(0.5) -- Small delay before retrying
+                    end
+                end
             end
-            task.wait(0.1) -- Small delay between unequip calls
+            if not unequippedSuccessfully then
+                warn("Failed to unequip pet ID: " .. uniqueId .. " after " .. MAX_RETRIES .. " attempts.")
+            end
+            task.wait(0.1) -- Small delay between processing different pets
         end
         print("Finished unequipping pets.")
     end
