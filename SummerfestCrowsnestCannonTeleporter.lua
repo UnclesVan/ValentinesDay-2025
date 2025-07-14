@@ -111,115 +111,82 @@ task.spawn(function()
 end)
 
 -- ====================================================================
--- PART 2: Hotbar Button Clicking
+-- PART 2: Crowsnest Telporting 
 -- ====================================================================
 
--- Essential Services
-local player = game:GetService("Players").LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui", 15) -- Increased timeout for PlayerGui
+local Players = game:GetService("Players")
+local workspace = game:GetService("Workspace")
+local player = Players.LocalPlayer
 
-if not playerGui then
-    warn("Hotbar Clicker: PlayerGui not found after 15 seconds. Script cannot proceed with button clicking.")
-    -- The AFK prevention part will continue to run in its own task.
-    return -- Exit this part of the script if PlayerGui isn't available
+local function getHRP()
+    local character = player.Character or player.CharacterAdded:Wait()
+    return character:WaitForChild("HumanoidRootPart")
 end
 
-print("Hotbar Clicker: Script started successfully and PlayerGui found!")
-print("Hotbar Clicker: Starting continuous button finding and clicking loop.")
+local mainPath = "Interiors.MainMap!Summerfest.Event.CrowsNestCannons"
 
--- Define the paths to the target buttons
-local dropButtonPath = "MinigameHotbarApp.Hotbar.DropButton.Button"
-local swordButtonPath = "MinigameHotbarApp.Hotbar.SwordButton.Button"
+local function getAllLoadInteractionParts()
+    local container = workspace
+    for part in string.gmatch(mainPath, "[^%.]+") do
+        container = container:FindFirstChild(part)
+        if not container then
+            warn("Cannot find part: " .. part)
+            return {}
+        end
+    end
 
--- Function to safely get a UI element with a timeout and explicit retries
--- Returns the found instance, or nil if not found within all attempts
-local function getUIElement(base, fullPathString, timeoutPerAttempt, maxAttempts)
-    timeoutPerAttempt = timeoutPerAttempt or 0.2 -- How long to wait per attempt
-    maxAttempts = maxAttempts or 3               -- How many times to retry finding each part
-
-    local currentElement = base
-    local pathParts = string.split(fullPathString, ".")
-
-    for i, partName in ipairs(pathParts) do
-        local found = false
-        local attempts = 0
-        local elementToFind = partName
-
-        while not found and attempts < maxAttempts do
-            attempts = attempts + 1
-            local result = currentElement:WaitForChild(elementToFind, timeoutPerAttempt)
-
-            if result then
-                currentElement = result
-                found = true
-            else
-                -- No need to print retry messages here; the main loop will handle "Not all buttons found"
-            --    if i == #pathParts and attempts < maxAttempts then -- Only print retry if it's the last part and not out of attempts
-            --        print("Retrying (" .. attempts .. "/" .. maxAttempts .. ") to find '" .. elementToFind .. "' for path: " .. fullPathString)
-            --    elseif i == #pathParts and attempts == maxAttempts then
-            --        warn("Failed to find '" .. elementToFind .. "' for path '" .. fullPathString .. "' after " .. maxAttempts .. " attempts.")
-            --    end
+    local loadParts = {}
+    for _, cannonModel in ipairs(container:GetChildren()) do
+        if cannonModel:IsA("Model") and tonumber(cannonModel.Name) then
+            local cannon = cannonModel:FindFirstChild("Cannon")
+            if cannon and cannon:IsA("Model") then
+                local loadPart = cannon:FindFirstChild("LoadInteractionPart")
+                if loadPart and loadPart:IsA("BasePart") then
+                    table.insert(loadParts, loadPart)
+                end
             end
         end
-
-        if not found then
-            return nil -- If any part of the path is not found after maxAttempts, return nil
-        end
     end
-    return currentElement
+    print("Found " .. #loadParts .. " load interaction parts.")
+    return loadParts
 end
 
--- Function to simulate click events
-local function clickButton(buttonInstance)
-    if buttonInstance and buttonInstance.Parent then -- Check if the button exists and is still in the game hierarchy
-        print("Hotbar Clicker: Attempting to click: " .. buttonInstance.Name)
-        -- Attempt to fire MouseButton1Down, MouseButton1Click, and MouseButton1Up
-        -- This sequence attempts to mimic a full user click action
-        for _, connection in pairs(getconnections(buttonInstance.MouseButton1Down)) do
-            connection:Fire()
-        end
-        task.wait(0.05) -- Small delay between firing events for realism
-        for _, connection in pairs(getconnections(buttonInstance.MouseButton1Click)) do
-            connection:Fire()
-        end
-        task.wait(0.05)
-        for _, connection in pairs(getconnections(buttonInstance.MouseButton1Up)) do
-            connection:Fire()
-        end
-        print("Hotbar Clicker: Successfully sent click events to: " .. buttonInstance.Name)
-    else
-        warn("Hotbar Clicker: Click aborted: " .. (buttonInstance and buttonInstance.Name or "nil button") .. " is not valid or removed.")
-    end
-end
-
-local actionDelay = 0.5 -- Delay in seconds between clicking DropButton and SwordButton
-local findCycleDelay = 1 -- Delay if buttons are not found in a cycle
-
--- Main loop to continuously find and click the buttons
-while true do
-    print("Hotbar Clicker: Finding hotbar button 1...")
-    local foundDropButton = getUIElement(playerGui, dropButtonPath)
-
-    print("Hotbar Clicker: Finding hotbar button 2...")
-    local foundSwordButton = getUIElement(playerGui, swordButtonPath)
-
-    if foundDropButton and foundSwordButton then
-        print("Hotbar Clicker: Found hotbar button 1: " .. foundDropButton.Name)
-        print("Hotbar Clicker: Found hotbar button 2: " .. foundSwordButton.Name)
-
-        -- Now that both are confirmed found, perform the clicks
-        clickButton(foundDropButton)
-        task.wait(actionDelay)
-
-        clickButton(foundSwordButton)
-        task.wait(actionDelay) -- Delay before checking again for the next cycle
-    else
-        -- If one or both buttons are not found, wait and try again
-        print("Hotbar Clicker: Not all buttons were found in this attempt. Retrying...")
-        task.wait(findCycleDelay)
+local function teleportToAll()
+    local hrp = getHRP()
+    if not hrp then
+        warn("HumanoidRootPart not found.")
+        return
     end
 
-    task.wait(0.1) -- Small yield to prevent script from hogging resources
+    spawn(function()
+        while true do
+            local loadParts = getAllLoadInteractionParts()
+            if #loadParts == 0 then
+                warn("No load parts found.")
+                wait(5)
+                continue
+            end
+
+            for i, loadPart in ipairs(loadParts) do
+                if loadPart and loadPart.Parent then
+                    -- Teleport
+                    hrp.CFrame = loadPart.CFrame * CFrame.new(0, 5, 0)
+                    print("Teleported to load interaction #" .. i)
+                    wait(2) -- wait 2 seconds before moving to next
+                else
+                    warn("Load interaction #" .. i .. " no longer exists.")
+                end
+            end
+            wait(3) -- wait before starting over
+        end
+    end)
 end
 
-print("Hotbar Clicker: Script finished or stopped.")
+player.CharacterAdded:Connect(function()
+    wait(1)
+    teleportToAll()
+end)
+
+if player.Character then
+    teleportToAll()
+end
