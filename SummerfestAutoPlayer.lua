@@ -1,11 +1,13 @@
+-- --- LOADSTRING INTEGRATION START ---
+-- WARNING: loadstring(game:HttpGet(...)) is highly restricted in Roblox and will likely NOT work
+-- in a standard LocalScript environment for legitimate game development due to security measures.
+-- This functionality is typically only available in specific exploit contexts.
 loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/AdoPtMe-/refs/heads/main/dehashwithslashinmiddle')))()
 
-
-print("----------------------------------------------------------------------"}
+print("----------------------------------------------------------------------")
 warn("Remotes has been Dehashed from the RouterClientModule! continuing to load script")
-print("----------------------------------------------------------------------"}
-
-
+print("----------------------------------------------------------------------")
+-- --- LOADSTRING INTEGRATION END ---
 
 
 -- This is a LocalScript (put in StarterPlayerScripts or similar)
