@@ -1,0 +1,95 @@
+-- Load the ClientData module safely
+local function loadClientDataModule()
+    local success, module = pcall(function()
+        return require(game:GetService("ReplicatedStorage").ClientModules.Core.ClientData)
+    end)
+    if not success then
+        warn("Failed to load ClientData module.")
+        return nil
+    end
+    return module
+end
+
+local ClientData = loadClientDataModule()
+if not ClientData then return end
+
+local function waitForData()
+    local data = ClientData.get_data()
+    while not data do
+        task.wait(0.5)
+        data = ClientData.get_data()
+    end
+    return data
+end
+
+local serverData = waitForData()
+
+-- Get local player's name dynamically
+local playerName = game.Players.LocalPlayer and game.Players.LocalPlayer.Name
+if not playerName then
+    warn("Could not get local player name.")
+    return
+end
+
+local playerData = serverData[playerName]
+
+if not playerData or not playerData.inventory or not playerData.inventory.food then
+    warn("No inventory data for player: " .. playerName)
+    return
+end
+
+-- Find the bait's unique ID
+local baitId = nil
+for uniqueId, foodData in pairs(playerData.inventory.food) do
+    if foodData.id == "ice_dimension_2025_ice_soup_bait" then
+        baitId = uniqueId
+        break
+    end
+end
+
+if not baitId then
+    warn("Ice Soup Bait not found in inventory.")
+    return
+end
+
+-- Find your furniture folder
+local furnitureFolder = workspace:FindFirstChild("HouseInteriors")
+    and workspace.HouseInteriors:FindFirstChild("furniture")
+if not furnitureFolder then
+    warn("Furniture folder not found.")
+    return
+end
+
+-- Loop through models
+for _, model in pairs(furnitureFolder:GetChildren()) do
+    if typeof(model) == "Instance" and model.Name:find("^" .. playerName .. "/1/nil/true/f%-") then
+        local fNumber = model.Name:match("f%-(%d+)$")
+        if fNumber then
+            local lure = model:FindFirstChild("Lures2023NormalLure")
+            if lure then
+                print("Found lure in model:", model.Name, "f- number:", fNumber)
+                -- Prepare arguments for activation
+                local args = {
+                    game:GetService("Players"):WaitForChild(playerName),
+                    "f-" .. fNumber,
+                    "UseBlock",
+                    { bait_unique = baitId },
+                    game.Players.LocalPlayer.Character
+                }
+                -- Activate the bait
+                local success, err = pcall(function()
+                    game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("HousingAPI/ActivateFurniture"):InvokeServer(unpack(args))
+                end)
+
+                if success then
+                    -- Print simplified message
+                    print(string.format("%s has put Ice Soup Bait (%s) into F-%s Lure", playerName, baitId, fNumber))
+                else
+                    warn("Failed to activate furniture for model:", model.Name, err)
+                end
+            else
+                print("Lure not found in model:", model.Name)
+            end
+        end
+    end
+end
