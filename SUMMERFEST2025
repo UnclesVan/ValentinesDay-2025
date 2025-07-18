@@ -37,8 +37,12 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
+-- Define Tabs with new names and icons
 local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "users" }),
+    -- Renamed Main to Treasure Defence
+    TreasureDefence = Window:AddTab({ Title = "Treasure Defence", Icon = "shield-alt" }),
+    -- New tab for Cannon Circle
+    CannonCircle = Window:AddTab({ Title = "Cannon Circle", Icon = "bullseye" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
 }
 
@@ -185,32 +189,35 @@ local function destroyAFKTeleport()
     end
     print("AFK Preventer: Found folder named '" .. API_FOLDER_NAME .. "'.")
 
-    -- Now, try to find the target object *by its full literal name* inside the 'API' folder.
-    -- This assumes the object's name literally contains the slashes.
-    local afkTeleportObject = apiFolder:WaitForChild(TARGET_OBJECT_FULL_NAME, 15) -- Increased timeout
-    if not afkTeleportObject then
-        warn("AFK Preventer: Failed to find object named '" .. TARGET_OBJECT_FULL_NAME .. "' inside '" .. API_FOLDER_NAME .. "'. Retrying...")
-        return -- Exit if the target object isn't found
+    local pathParts = string.split(TARGET_OBJECT_FULL_NAME, "/")
+    local currentObject = apiFolder
+    local foundAllParts = true
+
+    for i, partName in ipairs(pathParts) do
+        local nextObject = currentObject:FindFirstChild(partName)
+        if not nextObject then
+            warn("AFK Preventer: Failed to find path part '" .. partName .. "' in " .. currentObject.Name .. ". Full path: " .. TARGET_OBJECT_FULL_NAME .. ". Retrying...")
+            foundAllParts = false
+            break
+        end
+        currentObject = nextObject
     end
+
+    if not foundAllParts then
+        return
+    end
+
+    local afkTeleportObject = currentObject -- This is now the final object in the path
+
     print("AFK Preventer: Found object named '" .. TARGET_OBJECT_FULL_NAME .. "'.")
 
     -- Check if the found object is an Instance and specifically a RemoteEvent.
     if typeof(afkTeleportObject) == "Instance" and afkTeleportObject:IsA("RemoteEvent") then
-        -- If it's a RemoteEvent, we can destroy it.
-        -- Destroying it will remove it from the DataModel on the client,
-        -- making it inaccessible for client-side scripts.
         afkTeleportObject:Destroy()
         print("AFK Preventer: Successfully destroyed RemoteEvent named '" .. TARGET_OBJECT_FULL_NAME .. "'.")
-    elseif typeof(afkTeleportObject) == "function" then
-        -- This case is less common for objects directly parented in ReplicatedStorage,
-        -- as Roblox APIs are typically Instances (RemoteFunction, RemoteEvent).
-        warn("AFK Preventer: Object named '" .. TARGET_OBJECT_FULL_NAME .. "' found as a direct function. Direct destruction is not possible for this type.")
-        warn("AFK Preventer: This script primarily targets Roblox Instances like RemoteFunctions/RemoteEvents for destruction.")
     else
-        -- If the object is found but is not a RemoteEvent or a type that can be destroyed
-        -- in this manner, log its actual type for debugging.
         warn("AFK Preventer: Found object named '" .. TARGET_OBJECT_FULL_NAME .. "' but it is not a RemoteEvent or a destructible Instance.")
-        warn("AFK Preventer: Its actual type is: " .. typeof(afkTeleportObject) .. ". Its ClassName is: " .. afkTeleportObject.ClassName .. ". Retrying...")
+        warn("AFK Preventer: Its actual type is: " .. typeof(afkTeleportObject) .. ". Its ClassName is: " .. (afkTeleportObject and afkTeleportObject.ClassName or "nil") .. ". Retrying...")
     end
 end
 
@@ -242,22 +249,32 @@ local antiRagdollEnabled = false
 -- Function to handle anti-ragdoll
 local function handleAntiRagdoll()
     while true do
-        if antiRagdollEnabled then
-            local char = player.Character
-            if char then
-                local humanoid = char:FindFirstChildOfClass("Humanoid")
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if humanoid and hrp then
+        local char = player.Character
+        if char then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if humanoid and hrp then
+                if antiRagdollEnabled then
                     -- Set PlatformStand to true to prevent ragdolling
                     humanoid.PlatformStand = true
+                    -- Set Jump to false to prevent hopping
+                    humanoid.Jump = false
+                    -- Explicitly set Humanoid.Sit to false
+                    humanoid.Sit = false
                     -- Reset velocity to prevent sliding/falling due to physics
                     hrp.Velocity = Vector3.new(0,0,0)
                     hrp.RotVelocity = Vector3.new(0,0,0)
-                    -- log("Anti-Ragdoll: Humanoid.PlatformStand set and velocity reset.") -- Too spammy
+                    -- log("Anti-Ragdoll: Humanoid.PlatformStand set, Jump set to false, and velocity reset.") -- Too spammy
+                else
+                    -- Revert changes when anti-ragdoll is disabled
+                    humanoid.PlatformStand = false
+                    humanoid.Jump = true -- Allow jumping again
+                    humanoid.Sit = false -- Ensure it's not stuck sitting if it was
+                    -- No need to explicitly set velocity to 0 when disabling, let physics take over
                 end
             end
         end
-        task.wait(0.1) -- Check frequently to maintain PlatformStand and reset velocity
+        task.wait(0.05) -- Check every 0.05 seconds for more aggressive control
     end
 end
 
@@ -291,13 +308,16 @@ local function monitorInteriorForSpawnPlatform()
 end
 spawn(monitorInteriorForSpawnPlatform)
 
--- Main script toggle
+-- Main script toggle (now for Treasure Defence)
 local scriptEnabled = false
-local mainToggle = Tabs.Main:AddToggle("AutoScriptToggle", {
+local mainToggle = Tabs.TreasureDefence:AddToggle("AutoScriptToggle", {
     Title = "Script OFF",
     Description = "Enable or disable the main script functionality.",
     Default = false,
 })
+
+-- New state variable for one-time block teleport
+local hasTeleportedToBlock = false
 
 local function toggleScript(state)
     scriptEnabled = state
@@ -315,6 +335,11 @@ local function toggleScript(state)
         else
             log("Could not teleport to main ring (ring or player HRP missing).")
         end
+        -- Reset one-time teleport flag when script is enabled
+        hasTeleportedToBlock = false
+    else
+        -- When script is disabled, ensure the flag is reset
+        hasTeleportedToBlock = false
     end
 end
 
@@ -323,8 +348,8 @@ mainToggle:OnChanged(function(state)
     log("Main Script " .. (state and "ON" or "OFF"))
 end)
 
--- Auto swing and raider teleport toggle
-local autoSwingToggle = Tabs.Main:AddToggle("AutoSwingToggle", {
+-- Auto swing and raider teleport toggle (remains in Treasure Defence)
+local autoSwingToggle = Tabs.TreasureDefence:AddToggle("AutoSwingToggle", {
     Title = "AutoSwing & Raider Teleport OFF",
     Description = "Enables auto-swinging the minigame sword and teleporting to raiders near gold.",
     Default = false,
@@ -336,8 +361,8 @@ autoSwingToggle:OnChanged(function(state)
     log("AutoSwing & Raider Teleport " .. (state and "ON" or "OFF"))
 end)
 
--- New Anti-Ragdoll Toggle
-local antiRagdollToggle = Tabs.Main:AddToggle("AntiRagdollToggle", {
+-- New Anti-Ragdoll Toggle (remains in Treasure Defence)
+local antiRagdollToggle = Tabs.TreasureDefence:AddToggle("AntiRagdollToggle", {
     Title = "Anti-Ragdoll OFF",
     Description = "Prevents your character from falling into a ragdoll state and stops sliding.",
     Default = false,
@@ -349,9 +374,9 @@ antiRagdollToggle:OnChanged(function(state)
     log("Anti-Ragdoll " .. (state and "ON" or "OFF"))
 end)
 
--- New Cannon Circle Features Toggle
+-- New Cannon Circle Features Toggle (MOVED to CannonCircle tab)
 local cannonCircleEnabled = false
-local cannonCircleToggle = Tabs.Main:AddToggle("CannonCircleToggle", {
+local cannonCircleToggle = Tabs.CannonCircle:AddToggle("CannonCircleToggle", {
     Title = "Cannon Circle Features OFF",
     Description = "Enable features for the Cannon Circle minigame.",
     Default = false,
@@ -367,6 +392,8 @@ end)
 local function handleCannonCircleFeatures()
     if not cannonCircleEnabled then return end
     -- Add your Cannon Circle specific logic here.
+    -- This function will be called every 1 second when the main script is enabled
+    -- and the minigame is active.
     -- For example:
     -- local cannon = workspace:FindFirstChild("CannonCircleCannon")
     -- if cannon then
@@ -377,7 +404,7 @@ end
 
 
 local clickSpeed = 1.0
-local speedSlider = Tabs.Main:AddSlider("ClickSpeed", {
+local speedSlider = Tabs.TreasureDefence:AddSlider("ClickSpeed", { -- Remains in Treasure Defence
     Title = "Click Speed (seconds)",
     Default = 1.0,
     Min = 0.1,
@@ -522,6 +549,56 @@ local function findPetsContainer()
     return nil
 end
 
+-- New function to find the specific Block part for teleportation
+local function findTargetBlock(interior)
+    log("DEBUG: Attempting to find target Block part.")
+    local visualFolder = interior:FindFirstChild("Visual")
+    if not visualFolder or not visualFolder:IsA("Folder") then
+        log("DEBUG: Could not find 'Visual' Folder inside interior for Block target (Type: " .. (visualFolder and visualFolder.ClassName or "nil") .. "). Expected 'Folder'.")
+        return nil
+    end
+    log("DEBUG: Found 'Visual' Folder (Type: " .. visualFolder.ClassName .. "). Expected 'Folder'.")
+
+    local stepsModel = visualFolder:FindFirstChild("Steps")
+    if not stepsModel or not stepsModel:IsA("Model") then
+        log("DEBUG: Could not find 'Steps' Model inside Visual for Block target (Type: " .. (stepsModel and stepsModel.ClassName or "nil") .. "). Expected 'Model'.")
+        return nil
+    end
+    log("DEBUG: Found 'Steps' Model (Type: " .. stepsModel.ClassName .. "). Expected 'Model'.")
+
+    local child2_steps = findChildByIndex(stepsModel, 2, "Steps Child [2]")
+    if not child2_steps or not child2_steps:IsA("Model") then -- Still expecting a Model here
+        log("DEBUG: Steps Child [2] not found or not a Model for Block target (Type: " .. (child2_steps and child2_steps.ClassName or "nil") .. "). Expected 'Model'.")
+        return nil
+    end
+    log("DEBUG: Found Steps Child [2] (Model): " .. child2_steps.Name .. " (Type: " .. child2_steps.ClassName .. "). Expected 'Model'.")
+
+    -- NEW: Additional GetChildren()[2] step
+    local nestedChild2_steps = findChildByIndex(child2_steps, 2, "Steps Child [2] - Nested Child [2]")
+    if not nestedChild2_steps or not nestedChild2_steps:IsA("Model") then -- Still expecting a Model here
+        log("DEBUG: Steps Child [2] - Nested Child [2] not found or not a Model for Block target (Type: " .. (nestedChild2_steps and nestedChild2_steps.ClassName or "nil") .. "). Expected 'Model'.")
+        return nil
+    end
+    log("DEBUG: Found Steps Child [2] - Nested Child [2] (Model): " .. nestedChild2_steps.Name .. " (Type: " .. nestedChild2_steps.ClassName .. "). Expected 'Model'.")
+
+    local modelInsideNestedChild2 = nestedChild2_steps:FindFirstChild("Model")
+    if not modelInsideNestedChild2 or not modelInsideNestedChild2:IsA("Model") then
+        log("DEBUG: Could not find 'Model' inside Steps Child [2] - Nested Child [2] for Block target (Type: " .. (modelInsideNestedChild2 and modelInsideNestedChild2.ClassName or "nil") .. "). Expected 'Model'.")
+        return nil
+    end
+    log("DEBUG: Found 'Model' inside Steps Child [2] - Nested Child [2] (Type: " .. modelInsideNestedChild2.ClassName .. "). Expected 'Model'.")
+
+    -- NEW: Changed index to 3 for the final part
+    local finalPart = findChildByIndex(modelInsideNestedChild2, 3, "Model Child [3]")
+    if not finalPart or not finalPart:IsA("BasePart") then
+        log("DEBUG: Final part at Model Child [3] not found or not a BasePart for Block target (Type: " .. (finalPart and finalPart.ClassName or "nil") .. "). Expected 'BasePart'.")
+        return nil
+    end
+    log("DEBUG: Found final part (Type: " .. finalPart.ClassName .. "). Expected 'BasePart'.")
+    return finalPart
+end
+
+
 -- Handles teleportation to "raider" models (excluding specific keywords)
 local function handleTeleportToModels()
     if not scriptEnabled or not _G.teleportToRaidersActive then return end -- Ensure this feature is enabled
@@ -590,7 +667,6 @@ local function handleTeleportToModels()
 
                                 pcall(function()
                                     hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
-                                    task.wait(0.005)
                                     log("Successfully teleported player to raider " .. model.Name .. ".")
                                     log("Player HRP CFrame AFTER teleport: " .. tostring(hrp.CFrame))
                                 end)
@@ -612,73 +688,33 @@ local function handleTeleportToModels()
         log("Pets container not found for raider detection.")
     end
 
-    -- --- If no raiders were teleported to, attempt to teleport to Turrets ---
-    if not teleportedToTarget then
-        log("No raiders found within guard radius. Checking for turrets...")
-        local visualFolder = bonkInterior:FindFirstChild("Visual")
-        if visualFolder and visualFolder:IsA("Folder") then -- Explicitly check if Visual is a Folder
-            log("DEBUG: Found Visual folder (Type: " .. visualFolder.ClassName .. ").")
-            
-            -- Explicitly find the child at index 65 within Visual
-            local child65 = findChildByIndex(visualFolder, 65, "Visual Child [65]")
-            
-            if child65 and child65:IsA("Model") then -- Ensure it's a Model
-                log("DEBUG: Found Visual Child [65] (Model): " .. child65.Name .. " (Type: " .. child65.ClassName .. ")")
-                local turretsModel = child65:FindFirstChild("Turrets")
-                if turretsModel and turretsModel:IsA("Model") then -- Ensure Turrets is a Model
-                    log("DEBUG: Found Turrets model inside Visual Child [65] (Type: " .. turretsModel.ClassName .. ").")
-                    
-                    local potentialTurretParts = {}
-                    local turret7 = findChildByIndex(turretsModel, 7, "Turret [7]")
-                    local turret6 = findChildByIndex(turretsModel, 6, "Turret [6]")
+    -- --- If no raiders were teleported to, attempt to teleport to the new specific Block part ---
+    if not teleportedToTarget and not hasTeleportedToBlock then -- Only attempt if no raiders and not already teleported to block
+        log("No raiders found within guard radius. Checking for specific Block target...")
+        local targetBlockPart = findTargetBlock(bonkInterior)
+        if targetBlockPart and targetBlockPart:IsA("BasePart") then
+            log("CONDITION MET: Found specific Block target: " .. targetBlockPart.Name .. ". Attempting teleport.")
+            local teleportPos = targetBlockPart.Position + Vector3.new(0, 5, 0) -- Teleport slightly above
+            local lookAtPos = targetBlockPart.Position
 
-                    if turret7 and turret7:IsA("BasePart") then -- Directly check if it's a BasePart (like MeshPart)
-                        table.insert(potentialTurretParts, turret7)
-                        log("DEBUG: Added Turret [7] (MeshPart) to potential targets: " .. turret7.Name)
-                    else
-                        log("DEBUG: Turret [7] not found or not a BasePart (Type: " .. (turret7 and turret7.ClassName or "nil") .. ").")
-                    end
-                    if turret6 and turret6:IsA("BasePart") then -- Directly check if it's a BasePart (like MeshPart)
-                        table.insert(potentialTurretParts, turret6)
-                        log("DEBUG: Added Turret [6] (MeshPart) to potential targets: " .. turret6.Name)
-                    else
-                        log("DEBUG: Turret [6] not found or not a BasePart (Type: " .. (turret6 and turret6.ClassName or "nil") .. ").")
-                    end
+            log("Player HRP CFrame BEFORE teleport: " .. tostring(hrp.CFrame))
+            log("Teleporting to Block Pos: " .. tostring(teleportPos) .. ", Looking at: " .. tostring(lookAtPos))
 
-                    if #potentialTurretParts > 0 then
-                        -- Teleport to the first available turret part found
-                        local targetPart = potentialTurretParts[1]
-                        log("Attempting to teleport to turret: " .. targetPart.Name .. " (Parent: " .. targetPart.Parent.Name .. ")")
-                        local teleportPos = targetPart.Position + Vector3.new(0, 5, 0) -- Teleport slightly above
-                        local lookAtPos = targetPart.Position
-
-                        log("Player HRP CFrame BEFORE turret teleport: " .. tostring(hrp.CFrame))
-                        log("Teleporting to Turret Pos: " .. tostring(teleportPos) .. ", Looking at: " .. tostring(lookAtPos))
-
-                        pcall(function()
-                            hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
-                            task.wait(0.005)
-                            log("Successfully teleported player to turret " .. targetPart.Name .. ".")
-                            log("Player HRP CFrame AFTER turret teleport: " .. tostring(hrp.CFrame))
-                        end)
-                        teleportedToTarget = true
-                        return -- Teleported to a turret, exit function
-                    else
-                        log("No valid turret MeshParts found for teleportation after checking indices 6 and 7.")
-                    end
-                else
-                    log("DEBUG: Could not find 'Turrets' Model inside Visual Child [65] (Type: " .. (turretsModel and turretsModel.ClassName or "nil") .. ").")
-                end
-            else
-                log("DEBUG: Visual Child [65] not found or not a Model (Type: " .. (child65 and child65.ClassName or "nil") .. ").")
-            end
+            pcall(function()
+                hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
+                task.wait(0.005)
+                log("Successfully teleported player to Block target " .. targetBlockPart.Name .. ".")
+            end)
+            teleportedToTarget = true
+            hasTeleportedToBlock = true -- Set the flag to true after successful teleport
+            return -- Teleported to Block, exit function
         else
-            log("DEBUG: Could not find 'Visual' Folder inside interior for turret detection (Type: " .. (visualFolder and visualFolder.ClassName or "nil") .. ").")
+            log("Specific Block target not found or not a BasePart.")
         end
     end
 
     if not teleportedToTarget then
-        log("No raiders or specified turrets found for teleportation.")
+        log("No raiders or specific Block target found for teleportation.")
     end
 end
 
