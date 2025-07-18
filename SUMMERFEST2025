@@ -5,9 +5,9 @@ local success_dehash, err_dehash = pcall(function()
     loadstring(game:HttpGet('https://raw.githubusercontent.com/UnclesVan/AdoPtMe-/refs/heads/main/dehashwithslashinmiddle'))()
 end)
 if not success_dehash then warn("Dehash failed: " .. err_dehash) end
-task.wait(2) -- Use task.wait for modern Roblox Lua
+task.wait(2)
 
--- Load libraries
+-- Load Fluent libraries
 local Fluent = nil
 local SaveManager = nil
 local InterfaceManager = nil
@@ -26,10 +26,19 @@ if not Fluent or not SaveManager or not InterfaceManager then
     error("Failed to load Fluent libraries. Please check your internet connection or the URLs.")
 end
 
--- Create main window
+-- Services
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+local workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+-- Create main Fluent UI window
 local Window = Fluent:CreateWindow({
-    Title = "Fluent " .. Fluent.Version,
-    SubTitle = "by dawid",
+    Title = "SummerFest 2025 Automation v70", -- Updated title
+    SubTitle = "by UnclesVan", -- Updated subtitle
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -37,11 +46,9 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
--- Define Tabs with new names and icons
+-- Define Tabs
 local Tabs = {
-    -- Renamed Main to Treasure Defence
     TreasureDefence = Window:AddTab({ Title = "Treasure Defence", Icon = "shield-alt" }),
-    -- New tab for Cannon Circle
     CannonCircle = Window:AddTab({ Title = "Cannon Circle", Icon = "bullseye" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
 }
@@ -52,395 +59,204 @@ Fluent:Notify({
     Duration = 3
 })
 
-local player = game.Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+-- --- SCRIPT STATE ---
+local scriptEnabled = false -- Controls the main script loop
+local hotbarSpamActive = true -- Example feature state (controlled by scriptEnabled's main loop)
+local teleportToRaidersActive = true -- ONLY THIS TELEPORT IS ACTIVE (controlled by scriptEnabled's main loop)
+local scoreIncreasingActionsAllowed = true
+local hasClickedStartButton = false
+local autoCloseRewardActive = false -- New: State for auto close reward toggle
+local autoClickHotbarActive = false -- New: State for auto click hotbar toggle
+local rewardsAutoClickActive = false -- State for auto click rewards button
 
--- Setup console log
-local consoleGui = Instance.new("ScreenGui", playerGui)
-consoleGui.Name = "ConsoleGui"
-local consoleFrame = Instance.new("Frame", consoleGui)
-consoleFrame.Size = UDim2.new(0.3, 0, 0.3, 0)
-consoleFrame.Position = UDim2.new(0.02, 0, 0.02, 0)
-consoleFrame.BackgroundColor3 = Color3.fromRGB(0,0,0)
-consoleFrame.BackgroundTransparency = 0.5
-consoleFrame.BorderSizePixel = 0 -- Remove border for cleaner look
-local consoleText = Instance.new("TextBox", consoleFrame)
-consoleText.Size = UDim2.new(1, -10, 1, -10)
-consoleText.Position = UDim2.new(0, 5, 0, 5)
-consoleText.MultiLine = true
-consoleText.TextWrapped = true
-consoleText.BackgroundTransparency = 1
-consoleText.TextColor3 = Color3.new(1,1,1)
-consoleText.TextSize = 12
-consoleText.Font = Enum.Font.Code -- Use a monospaced font for console
-consoleText.Text = ""
-consoleText.ClearTextOnFocus = false -- Don't clear text when clicked
-
--- Function to log messages to the in-game console
-local function log(msg)
-    consoleText.Text = consoleText.Text .. "[" .. os.date("%H:%M:%S") .. "] " .. tostring(msg) .. "\n"
-    -- Keep the console text from growing indefinitely, limit to last 100 lines
-    local lines = string.split(consoleText.Text, "\n")
-    if #lines > 100 then
-        table.remove(lines, 1) -- Remove the oldest line
-        consoleText.Text = table.concat(lines, "\n")
-    end
-end
-
--- Helper function for logging success/failure of finding game elements
-local function logFinding(id, name, found)
-    if found then
-        log("FOUND: " .. name .. " (" .. id .. ")")
-    else
-        log("NOT FOUND: " .. name .. " (" .. id .. ")")
-    end
-end
-
--- Get player character and HumanoidRootPart
-local function getCharacterAndHRP()
-    -- Wait for character to exist and its HumanoidRootPart
-    local ch = player.Character or player.CharacterAdded:Wait()
-    local hrp = ch:FindFirstChild("HumanoidRootPart")
-    return ch, hrp
-end
-
--- Get the teleport ring for the main map
-local function getTeleportRing()
-    return workspace:FindFirstChild("Interiors")
-        and workspace.Interiors:FindFirstChild("MainMap!Summerfest")
-        and workspace.Interiors["MainMap!Summerfest"]:FindFirstChild("CoconutBonkJoinZone")
-        and workspace.Interiors["MainMap!Summerfest"].CoconutBonkJoinZone:FindFirstChild("Ring")
-end
-
--- Function to create a large platform
--- This function now takes the exact desired position for the platform's center.
-local function createLargePlatform(position, parent)
-    local platform = Instance.new("Part")
-    platform.Name = "LargePlatform"
-    platform.Size = Vector3.new(512, 1, 512) -- Made larger like a baseplate
-    platform.Position = position -- Use the exact position provided
-    platform.Anchored = true
-    platform.CanCollide = true
-    platform.BrickColor = BrickColor.new("White") -- Changed to White
-    platform.Material = Enum.Material.Plastic -- Changed to Plastic for studs
-    platform.Parent = parent -- Parent can be workspace or an interior model
-    log("Created LargePlatform at: " .. tostring(position) .. " in " .. parent.Name .. " with size " .. tostring(platform.Size))
-    return platform
-end
-
-local lastPlatform = nil
-local COCONUT_BONK_INTERIOR_BASE_NAME = "CoconutBonkInterior"
-local GOLD_PILE_GUARD_RADIUS = 30 -- Increased radius to 30 studs as per user's observation
-
--- New constants for hotbar UI and excluded models
+-- --- CONFIGURATION ---
 local FROSTCLAWS_HOTBAR_APP_NAME = "MinigameHotbarApp"
 local DROP_BUTTON_NAME = "DropButton"
 local SWORD_BUTTON_NAME = "SwordButton"
--- Keywords to exclude from raider detection. This list is now empty as per user request.
-local EXCLUDED_MODEL_KEYWORDS = {}
+local EXCLUDED_MODEL_KEYWORDS = {"parrot", "cage"} -- Models to exclude from teleportation
+local COCONUT_BONK_INTERIOR_BASE_NAME = "CoconutBonkInterior"
+local GOLD_PILE_GUARD_RADIUS = 30 -- Radius around GoldPile to detect raiders
+local TARGET_SCORE = 1600
+local SCORE_UPPER_TOLERANCE = 50
+local SCORE_LOWER_TOLERANCE = 50
+local MAX_CONSOLE_LINES = 20
+local LOG_FINDING_COOLDOWN = 1
+local REWARDS_BUTTON_PATH = "MinigameRewardsApp.Body.Button" -- Path to the rewards button
 
--- Variable to control actions that increase score (tied to auto-swing toggle for now)
-local scoreIncreasingActionsAllowed = false
+-- --- INTERNAL ---
+local lastLogTime = {} -- For logFinding cooldowns
+local findingMinigameCoroutine = nil -- To manage the "finding minigame..." loop
 
--- New constant for platform vertical offset from SnowMound
-local PLATFORM_CLEARANCE_ABOVE_SNOWMOUND = 8 -- Increased for better clearance and to prevent flickering
+-- References to Fluent UI elements for updating
+local scriptToggleFluentBtn = nil
+local autoCloseRewardFluentBtn = nil
+local autoClickHotbarFluentBtn = nil
+local consoleOutputElement = nil -- This will be the actual Fluent UI element we write to
 
--- Helper to find a child by index, with logging
-local function findChildByIndex(parent, index, nameForLog)
-    if not parent then
-        log("DEBUG: findChildByIndex: Parent for " .. nameForLog .. " is nil.")
-        return nil
-    end
-    local children = parent:GetChildren()
-    if #children >= index and children[index] then
-        log("DEBUG: findChildByIndex: Found " .. nameForLog .. " at index " .. index .. ": " .. children[index].Name .. " (Type: " .. children[index].ClassName .. ")")
-        return children[index]
-    else
-        log("DEBUG: findChildByIndex: Could not find " .. nameForLog .. " at index " .. index .. ". Parent: " .. parent.Name .. ", Children Count: " .. #children)
-        return nil
-    end
-end
+-- New: Internal table to manage console log lines
+local internalLogLines = {}
 
--- ====================================================================
--- PART 1: AFK Disconnection Prevention (RemoteEvent Destruction)
--- This logic runs continuously to prevent AFK teleports by destroying a specific RemoteEvent.
--- ====================================================================
 
--- Define a variable to hold the ReplicatedStorage service.
--- This is a core Roblox service used for client-server communication.
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+-- Ensure character and humanoidrootpart are available from the start, with robust checks
+local character = player.Character
+local humanoidRootPart = nil
 
--- Define the path components based on the user's original syntax:
--- game:GetService("ReplicatedStorage").API["SummerfestEventAPI/RequestAFKTeleport"]
--- This means 'API' is a folder, and the object itself is named 'SummerfestEventAPI/RequestAFKTeleport'
--- inside that 'API' folder.
-local API_FOLDER_NAME = "API"
-local TARGET_OBJECT_FULL_NAME = "SummerfestEventAPI/RequestAFKTeleport" -- This is the literal name of the object
+-- --- FUNCTIONS ---
 
--- Function to attempt to destroy the target object.
--- This function will try to find the target and destroy it.
-local function destroyAFKTeleport()
-    -- First, try to find the 'API' folder in ReplicatedStorage.
-    -- We use WaitForChild to ensure it exists before proceeding.
-    local apiFolder = ReplicatedStorage:WaitForChild(API_FOLDER_NAME, 15) -- Increased timeout to 15 seconds
-    if not apiFolder then
-        warn("AFK Preventer: Failed to find folder named '" .. API_FOLDER_NAME .. "' in ReplicatedStorage. Retrying...")
-        return -- Exit the function if the 'API' folder isn't found
-    end
-    print("AFK Preventer: Found folder named '" .. API_FOLDER_NAME .. "'.")
-
-    local pathParts = string.split(TARGET_OBJECT_FULL_NAME, "/")
-    local currentObject = apiFolder
-    local foundAllParts = true
-
-    for i, partName in ipairs(pathParts) do
-        local nextObject = currentObject:FindFirstChild(partName)
-        if not nextObject then
-            warn("AFK Preventer: Failed to find path part '" .. partName .. "' in " .. currentObject.Name .. ". Full path: " .. TARGET_OBJECT_FULL_NAME .. ". Retrying...")
-            foundAllParts = false
-            break
+-- Robust function to get character and HumanoidRootPart
+local function getCharacterAndHRP()
+    local currentCharacter = player.Character
+    if not currentCharacter then
+        local success, result = pcall(function() return player.CharacterAdded:Wait() end)
+        if success and result then
+            currentCharacter = result
+        else
+            warn("Failed to get character: " .. tostring(result))
+            return nil, nil
         end
-        currentObject = nextObject
     end
 
-    if not foundAllParts then
-        return
-    end
-
-    local afkTeleportObject = currentObject -- This is now the final object in the path
-
-    print("AFK Preventer: Found object named '" .. TARGET_OBJECT_FULL_NAME .. "'.")
-
-    -- Check if the found object is an Instance and specifically a RemoteEvent.
-    if typeof(afkTeleportObject) == "Instance" and afkTeleportObject:IsA("RemoteEvent") then
-        afkTeleportObject:Destroy()
-        print("AFK Preventer: Successfully destroyed RemoteEvent named '" .. TARGET_OBJECT_FULL_NAME .. "'.")
-    else
-        warn("AFK Preventer: Found object named '" .. TARGET_OBJECT_FULL_NAME .. "' but it is not a RemoteEvent or a destructible Instance.")
-        warn("AFK Preventer: Its actual type is: " .. typeof(afkTeleportObject) .. ". Its ClassName is: " .. (afkTeleportObject and afkTeleportObject.ClassName or "nil") .. ". Retrying...")
-    end
-end
-
--- Use a separate coroutine for the AFK prevention loop to run concurrently
--- with the button clicking loop.
-task.spawn(function()
-    while true do
-        -- Wrap the call to destroyAFKTeleport in a pcall.
-        -- pcall returns two values: success (boolean) and result/error message.
-        local success, errorMessage = pcall(destroyAFKTeleport)
-
-        -- If the pcall was not successful (an error occurred), print the error message.
-        if not success then
-            warn("AFK Preventer: An error occurred during AFK teleport destruction attempt: " .. tostring(errorMessage))
+    local currentHrp = nil
+    local attempts = 0
+    while attempts < 100 do -- Try for up to 10 seconds
+        if currentCharacter and currentCharacter.Parent then
+            currentHrp = currentCharacter:FindFirstChild("HumanoidRootPart")
+            if currentHrp then break end
         end
-
-        task.wait(1) -- Current delay is 1 second.
-    end
-end)
-
--- ====================================================================
--- END PART 1
--- ====================================================================
-
--- New variable for anti-ragdoll toggle state
-local antiRagdollEnabled = false
-
--- Function to handle anti-ragdoll
-local function handleAntiRagdoll()
-    while true do
-        local char = player.Character
-        if char then
-            local humanoid = char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if humanoid and hrp then
-                if antiRagdollEnabled then
-                    -- Set PlatformStand to true to prevent ragdolling
-                    humanoid.PlatformStand = true
-                    -- Set Jump to false to prevent hopping
-                    humanoid.Jump = false
-                    -- Explicitly set Humanoid.Sit to false
-                    humanoid.Sit = false
-                    -- Reset velocity to prevent sliding/falling due to physics
-                    hrp.Velocity = Vector3.new(0,0,0)
-                    hrp.RotVelocity = Vector3.new(0,0,0)
-                    -- log("Anti-Ragdoll: Humanoid.PlatformStand set, Jump set to false, and velocity reset.") -- Too spammy
-                else
-                    -- Revert changes when anti-ragdoll is disabled
-                    humanoid.PlatformStand = false
-                    humanoid.Jump = true -- Allow jumping again
-                    humanoid.Sit = false -- Ensure it's not stuck sitting if it was
-                    -- No need to explicitly set velocity to 0 when disabling, let physics take over
-                end
+        task.wait(0.1)
+        attempts = attempts + 1
+        if not currentCharacter or not currentCharacter.Parent then
+            -- Re-attempt to get character if it disappears
+            local success, result = pcall(function() return player.Character or player.CharacterAdded:Wait() end)
+            if success and result then
+                currentCharacter = result
             end
         end
-        task.wait(0.05) -- Check every 0.05 seconds for more aggressive control
     end
+    return currentCharacter, currentHrp
 end
 
--- Spawn anti-ragdoll coroutine
-task.spawn(handleAntiRagdoll)
+-- Utility function for logging to the console UI
+function log(message, debugTag)
+    local timestamp = os.date("%H:%M:%S", os.time())
+    local formattedMessage = "[" .. timestamp .. "] " .. tostring(message)
+    if debugTag then
+        formattedMessage = formattedMessage .. " " .. debugTag
+    end
 
--- Monitor interiors to create a platform for the initial spawn point (in workspace)
-local function monitorInteriorForSpawnPlatform()
-    while true do
-        local foundInterior = false
-        if workspace:FindFirstChild("Interiors") then
-            for _, interior in ipairs(workspace.Interiors:GetChildren()) do
-                -- Check if the interior name contains the base name
-                if interior.Name:find(COCONUT_BONK_INTERIOR_BASE_NAME, 1, true) then
-                    log("Detected CoconutBonkInterior (for spawn platform): " .. interior.Name)
-                    foundInterior = true
-                    local cf = interior.PrimaryPart and interior.PrimaryPart.CFrame or CFrame.new(0,0,0)
-                    if lastPlatform and lastPlatform.Parent then
-                        lastPlatform:Destroy() -- Destroy previous platform if it exists
-                    end
-                    -- For the spawn platform, we place its center at the interior's primary part position
-                    lastPlatform = createLargePlatform(cf.p, workspace) -- Create in workspace
-                    break
-                end
+    if consoleOutputElement then
+        local success, err = pcall(function()
+            -- Add new message to our internal log history
+            table.insert(internalLogLines, formattedMessage)
+
+            -- Limit lines
+            if #internalLogLines > MAX_CONSOLE_LINES then
+                table.remove(internalLogLines, 1) -- Remove oldest line
             end
-        else
-            log("No 'Interiors' folder found for spawn platform.")
-        end
-        task.wait(5) -- Wait 5 seconds before re-checking
-    end
-end
-spawn(monitorInteriorForSpawnPlatform)
 
--- Main script toggle (now for Treasure Defence)
-local scriptEnabled = false
-local mainToggle = Tabs.TreasureDefence:AddToggle("AutoScriptToggle", {
-    Title = "Script OFF",
-    Description = "Enable or disable the main script functionality.",
-    Default = false,
-})
-
--- Removed hasTeleportedToBlock as it's no longer needed for continuous teleport
-
-local function toggleScript(state)
-    scriptEnabled = state
-    if mainToggle then mainToggle:SetTitle("Script " .. (state and "ON" or "OFF")) end
-    consoleGui.Enabled = state -- Enable/disable the console GUI
-    if state then
-        -- Teleport to the main ring when script is enabled
-        local ch, hrp = getCharacterAndHRP()
-        local ring = getTeleportRing()
-        if ring and hrp and hrp.Parent == ch then
-            pcall(function()
-                hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0)
-                log("Teleported to main ring upon script activation.")
-            end)
-        else
-            log("Could not teleport to main ring (ring or player HRP missing).")
-        end
-        -- hasTeleportedToBlock is no longer reset here as it's removed
-    end
-end
-
-mainToggle:OnChanged(function(state)
-    toggleScript(state)
-    log("Main Script " .. (state and "ON" or "OFF"))
-end)
-
--- Auto swing and raider teleport toggle (remains in Treasure Defence)
-local autoSwingToggle = Tabs.TreasureDefence:AddToggle("AutoSwingToggle", {
-    Title = "AutoSwing & Raider Teleport OFF",
-    Description = "Enables auto-swinging the minigame sword and teleporting to raiders near gold.",
-    Default = false,
-})
-
-autoSwingToggle:OnChanged(function(state)
-    _G.teleportToRaidersActive = state -- This global variable controls both features
-    scoreIncreasingActionsAllowed = state -- Tie this to the auto-swing toggle
-    log("AutoSwing & Raider Teleport " .. (state and "ON" or "OFF"))
-end)
-
--- New Anti-Ragdoll Toggle (remains in Treasure Defence)
-local antiRagdollToggle = Tabs.TreasureDefence:AddToggle("AntiRagdollToggle", {
-    Title = "Anti-Ragdoll OFF",
-    Description = "Prevents your character from falling into a ragdoll state and stops sliding.",
-    Default = false,
-})
-
-antiRagdollToggle:OnChanged(function(state)
-    antiRagdollEnabled = state
-    if antiRagdollToggle then antiRagdollToggle:SetTitle("Anti-Ragdoll " .. (state and "ON" or "OFF")) end
-    log("Anti-Ragdoll " .. (state and "ON" or "OFF"))
-end)
-
--- New Cannon Circle Features Toggle (MOVED to CannonCircle tab)
-local cannonCircleEnabled = false
-local cannonCircleToggle = Tabs.CannonCircle:AddToggle("CannonCircleToggle", {
-    Title = "Cannon Circle Features OFF",
-    Description = "Enable features for the Cannon Circle minigame.",
-    Default = false,
-})
-
-cannonCircleToggle:OnChanged(function(state)
-    cannonCircleEnabled = state
-    if cannonCircleToggle then cannonCircleToggle:SetTitle("Cannon Circle Features " .. (state and "ON" or "OFF")) end
-    log("Cannon Circle Features " .. (state and "ON" or "OFF"))
-end)
-
--- Placeholder function for Cannon Circle features
-local function handleCannonCircleFeatures()
-    if not cannonCircleEnabled then return end
-    -- Add your Cannon Circle specific logic here.
-    -- This function will be called every 1 second when the main script is enabled
-    -- and the minigame is active.
-    -- For example:
-    -- local cannon = workspace:FindFirstChild("CannonCircleCannon")
-    -- if cannon then
-    --     -- Do something with the cannon
-    --     log("Cannon Circle feature active: Interacting with cannon.")
-    -- end
-end
-
-
-local clickSpeed = 1.0
-local speedSlider = Tabs.TreasureDefence:AddSlider("ClickSpeed", { -- Remains in Treasure Defence
-    Title = "Click Speed (seconds)",
-    Default = 1.0,
-    Min = 0.1,
-    Max = 2.0,
-    Rounding = 0, -- Added rounding value to fix slider error
-    Callback = function(val) clickSpeed = val end,
-})
-
--- Safely get UI elements with a timeout
-local function getUIElement(base, path)
-    local parts = string.split(path, ".")
-    local current = base
-    for i, p in ipairs(parts) do
-        -- Wait up to 1 second for each part of the path
-        current = current:WaitForChild(p, 1)
-        if not current then
-            log("Failed to find UI element part: '" .. p .. "' at path: '" .. table.concat(parts, ".", 1, i) .. "'")
-            return nil
-        end
-    end
-    return current
-end
-
--- Simulate button clicks
-local function clickButton(btn)
-    if btn and btn.Parent then
-        log("Attempting to click: " .. btn.Name)
-        pcall(function()
-            -- Fire MouseButton1Down, MouseButton1Click, and MouseButton1Up events
-            for _, conn in pairs(getconnections(btn.MouseButton1Down)) do conn:Fire() end
-            task.wait(0.05)
-            for _, conn in pairs(getconnections(btn.MouseButton1Click)) do conn:Fire() end
-            task.wait(0.05)
-            for _, conn in pairs(getconnections(btn.MouseButton1Up)) do conn:Fire() end
-            log("Successfully clicked: " .. btn.Name)
+            -- Update the Fluent Paragraph element using SetContent
+            consoleOutputElement:SetContent(table.concat(internalLogLines, "\n"))
         end)
+        if not success then
+            warn("Error writing to Fluent UI console output: " .. tostring(err))
+            print(formattedMessage) -- Fallback to Roblox output if UI write fails
+        end
     else
-        log("Button not valid or parented: " .. tostring(btn) .. ". Skipping click.")
+        print(formattedMessage) -- Fallback to Roblox output if console UI not ready
     end
 end
 
--- Checks if the minigame is currently active based on the hotbar UI
+-- Log function with cooldown for "finding" messages (now uses global log)
+local function logFinding(key, messageName, isFound)
+    local currentTime = tick()
+    if isFound then
+        if lastLogTime[key] ~= "found" then
+            log(messageName .. " found!")
+            lastLogTime[key] = "found"
+        end
+    else
+        if lastLogTime[key] == "found" then
+            log(messageName .. " not found. Searching...")
+            lastLogTime[key] = currentTime
+        elseif not lastLogTime[key] or (currentTime - lastLogTime[key]) >= LOG_FINDING_COOLDOWN then
+            log("Finding " .. messageName .. "...")
+            lastLogTime[key] = currentTime
+        end
+    end
+end
+
+-- Fires connections for a given RBXScriptSignal (now uses global log)
+local function fireConnections(connections, eventName)
+    if connections then
+        for _, conn in pairs(connections) do
+            if typeof(conn) == "RBXScriptConnection" and type(conn.Fire) == "function" then
+                local success, err = pcall(function() conn:Fire() end)
+                if not success then
+                    log("Failed to fire " .. eventName .. " connection: " .. tostring(err))
+                end
+            else
+                log("Warning: Invalid " .. eventName .. " connection. Type: " .. typeof(conn))
+            end
+        end
+    end
+end
+
+-- Simulates a button click (general purpose, now uses global log)
+local function clickButton(button)
+    if button and button.Visible and button.Active then
+        log("Clicking: " .. button.Name)
+        local successDown, resultDown = pcall(function() return getconnections(button.MouseButton1Down) end)
+        if successDown and type(resultDown) == "table" then
+            fireConnections(resultDown, "MouseButton1Down")
+        end
+        task.wait(0.05)
+        local successClick, resultClick = pcall(function() return getconnections(button.MouseButton1Click) end)
+        if successClick and type(resultClick) == "table" then
+            fireConnections(resultClick, "MouseButton1Click")
+        end
+        task.wait(0.05)
+        local successUp, resultUp = pcall(function() return getconnections(button.MouseButton1Up) end)
+        if successUp and type(resultUp) == "table" then
+            fireConnections(resultUp, "MouseButton1Up")
+        end
+    else
+        warn("Cannot click button: " .. (button and button.Name or "nil") .. ". Not visible or active.")
+    end
+end
+
+-- Specific click logic for Auto Close Reward button, as provided by user (now uses global log)
+local function fireSpecificClickEvents(buttonInstance)
+    if buttonInstance and buttonInstance:IsA("GuiButton") and buttonInstance.Parent then -- Check if it's a valid GuiButton and still exists
+        -- Attempt to fire MouseButton1Down, MouseButton1Click, and MouseButton1Up
+        -- This sequence attempts to mimic a full user click action
+        local success, connectionsDown = pcall(function() return getconnections(buttonInstance.MouseButton1Down) end)
+        if success and type(connectionsDown) == "table" then
+            for _, connection in pairs(connectionsDown) do
+                pcall(function() connection:Fire() end) -- Wrap in pcall for safety
+            end
+        end
+        task.wait(0.05) -- Small delay between firing events for realism
+        local success, connectionsClick = pcall(function() return getconnections(buttonInstance.MouseButton1Click) end)
+        if success and type(connectionsClick) == "table" then
+            for _, connection in pairs(connectionsClick) do
+                pcall(function() connection:Fire() end) -- Wrap in pcall for safety
+            end
+        end
+        task.wait(0.05)
+        local success, connectionsUp = pcall(function() return getconnections(buttonInstance.MouseButton1Up) end)
+        if success and type(connectionsUp) == "table" then
+            for _, connection in pairs(connectionsUp) do
+                pcall(function() connection:Fire() end) -- Wrap in pcall for safety
+            end
+        end
+        log("Successfully sent click events to: " .. buttonInstance.Name)
+    else
+        warn("Click aborted: " .. (buttonInstance and buttonInstance.Name or "nil button") .. " is not valid or removed.")
+    end
+end
+
+
+-- Checks if the minigame is currently active based on the hotbar UI (now uses global log)
 local function isMinigameActive()
     local hotbarApp = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
     if hotbarApp then
@@ -459,7 +275,7 @@ local function isMinigameActive()
     end
 end
 
--- Handles clicking of hotbar abilities (Drop and Sword)
+-- Handles clicking of hotbar abilities (Drop and Sword, now uses global log)
 local function handleHotbarAbilities()
     if not scoreIncreasingActionsAllowed then
         log("Hotbar abilities paused due to score control.")
@@ -496,35 +312,23 @@ local function handleHotbarAbilities()
     end
 end
 
--- Finds the CoconutBonkInterior instance
+-- Finds the CoconutBonkInterior instance (now uses global log)
 local function findCoconutBonkInterior()
-    -- Check in workspace.Interiors first
-    if workspace:FindFirstChild("Interiors") then
-        for _, interior in ipairs(workspace.Interiors:GetChildren()) do
-            if interior.Name:find(COCONUT_BONK_INTERIOR_BASE_NAME, 1, true) then
-                logFinding("bonk_interior", "CoconutBonkInterior (in Interiors)", true)
-                return interior
-            end
-        end
-    else
+    if not workspace.Interiors then
         logFinding("bonk_interior_base", "workspace.Interiors", false)
+        return nil
     end
-
-    -- If not found in Interiors, check in workspace.Housing
-    if workspace:FindFirstChild("Housing") then
-        for _, interior in ipairs(workspace.Housing:GetChildren()) do
-            if interior.Name:find(COCONUT_BONK_INTERIOR_BASE_NAME, 1, true) then
-                logFinding("bonk_interior", "CoconutBonkInterior (in Housing)", true)
-                return interior
-            end
+    for _, interior in ipairs(workspace.Interiors:GetChildren()) do
+        if interior.Name:find(COCONUT_BONK_INTERIOR_BASE_NAME, 1, true) then
+            logFinding("bonk_interior", "CoconutBonkInterior", true)
+            return interior
         end
     end
-
-    logFinding("bonk_interior", "CoconutBonkInterior (overall)", false)
+    logFinding("bonk_interior", "CoconutBonkInterior", false)
     return nil
 end
 
--- Finds the Pets container within the minigame interior
+-- Finds the Pets container within the minigame interior (now uses global log)
 local function findPetsContainer()
     local interior = findCoconutBonkInterior()
     if not interior then return nil end
@@ -543,282 +347,517 @@ local function findPetsContainer()
     return nil
 end
 
--- New function to find the specific Block part for teleportation
-local function findTargetBlock(interior)
-    log("DEBUG: Attempting to find target Block part.")
-    local visualFolder = interior:FindFirstChild("Visual")
-    if not visualFolder or not visualFolder:IsA("Folder") then
-        log("DEBUG: Could not find 'Visual' Folder inside interior for Block target (Type: " .. (visualFolder and visualFolder.ClassName or "nil") .. "). Expected 'Folder'.")
-        return nil
-    end
-    log("DEBUG: Found 'Visual' Folder (Type: " .. visualFolder.ClassName .. "). Expected 'Folder'.")
-
-    local stepsModel = visualFolder:FindFirstChild("Steps")
-    if not stepsModel or not stepsModel:IsA("Model") then
-        log("DEBUG: Could not find 'Steps' Model inside Visual for Block target (Type: " .. (stepsModel and stepsModel.ClassName or "nil") .. "). Expected 'Model'.")
-        return nil
-    end
-    log("DEBUG: Found 'Steps' Model (Type: " .. stepsModel.ClassName .. "). Expected 'Model'.")
-
-    local child2_steps = findChildByIndex(stepsModel, 2, "Steps Child [2]")
-    if not child2_steps or not child2_steps:IsA("Model") then -- Still expecting a Model here
-        log("DEBUG: Steps Child [2] not found or not a Model for Block target (Type: " .. (child2_steps and child2_steps.ClassName or "nil") .. "). Expected 'Model'.")
-        return nil
-    end
-    log("DEBUG: Found Steps Child [2] (Model): " .. child2_steps.Name .. " (Type: " .. child2_steps.ClassName .. "). Expected 'Model'.")
-
-    -- NEW: Additional GetChildren()[2] step
-    local nestedChild2_steps = findChildByIndex(child2_steps, 2, "Steps Child [2] - Nested Child [2]")
-    if not nestedChild2_steps or not nestedChild2_steps:IsA("Model") then -- Still expecting a Model here
-        log("DEBUG: Steps Child [2] - Nested Child [2] not found or not a Model for Block target (Type: " .. (nestedChild2_steps and nestedChild2_steps.ClassName or "nil") .. "). Expected 'Model'.")
-        return nil
-    end
-    log("DEBUG: Found Steps Child [2] - Nested Child [2] (Model): " .. nestedChild2_steps.Name .. " (Type: " .. nestedChild2_steps.ClassName .. "). Expected 'Model'.")
-
-    local modelInsideNestedChild2 = nestedChild2_steps:FindFirstChild("Model")
-    if not modelInsideNestedChild2 or not modelInsideNestedChild2:IsA("Model") then
-        log("DEBUG: Could not find 'Model' inside Steps Child [2] - Nested Child [2] for Block target (Type: " .. (modelInsideNestedChild2 and modelInsideNestedChild2.ClassName or "nil") .. "). Expected 'Model'.")
-        return nil
-    end
-    log("DEBUG: Found 'Model' inside Steps Child [2] - Nested Child [2] (Type: " .. modelInsideNestedChild2.ClassName .. "). Expected 'Model'.")
-
-    -- NEW: Changed index to 3 for the final part
-    local finalPart = findChildByIndex(modelInsideNestedChild2, 3, "Model Child [3]")
-    if not finalPart or not finalPart:IsA("BasePart") then
-        log("DEBUG: Final part at Model Child [3] not found or not a BasePart for Block target (Type: " .. (finalPart and finalPart.ClassName or "nil") .. "). Expected 'BasePart'.")
-        return nil
-    end
-    log("DEBUG: Found final part (Type: " .. finalPart.ClassName .. "). Expected 'BasePart'.")
-    return finalPart
-end
-
-
--- Handles teleportation to "raider" models (excluding specific keywords)
+-- Handles teleportation to "raider" models (excluding specific keywords, now uses global log)
 local function handleTeleportToModels()
-    if not scriptEnabled or not _G.teleportToRaidersActive then return end -- Ensure this feature is enabled
-    log("Running handleTeleportToModels cycle...")
-
+    if not scriptEnabled or not teleportToRaidersActive then return end -- Ensure this feature is enabled
     local petsContainer = findPetsContainer()
     local currentCharacter, hrp = getCharacterAndHRP()
     local bonkInterior = findCoconutBonkInterior()
 
-    if not bonkInterior or not hrp or not hrp.Parent == currentCharacter then
-        log("Teleport conditions not met (bonkInterior or HRP missing/invalid).")
+    if not petsContainer or not bonkInterior or not hrp or not hrp.Parent == currentCharacter then
+        log("Teleport conditions not met (petsContainer, bonkInterior, or HRP missing).")
         return
     end
 
-    local teleportedToTarget = false
+    local gameFolder = bonkInterior:FindFirstChild("Game")
+    local goldPileRoot = gameFolder and gameFolder:FindFirstChild("GoldPile") and gameFolder.GoldPile:FindFirstChild("Root")
+    if not goldPileRoot or not goldPileRoot:IsA("BasePart") then
+        log("No valid GoldPile Root for raider detection.")
+        return
+    end
+    local goldPos = goldPileRoot.Position
 
-    -- --- Attempt to teleport to Raiders first ---
-    if petsContainer then
-        local gameFolder = bonkInterior:FindFirstChild("Game")
-        local goldPile = gameFolder and gameFolder:FindFirstChild("GoldPile")
-        local goldPos = nil
-
-        if goldPile then
-            local goldPileRoot = goldPile:FindFirstChild("Root")
-            if goldPileRoot and goldPileRoot:IsA("BasePart") then
-                goldPos = goldPileRoot.Position
-                log("GoldPile Root found at: " .. tostring(goldPos))
-            elseif goldPile:IsA("Model") and goldPile.PrimaryPart and goldPile.PrimaryPart:IsA("BasePart") then
-                goldPos = goldPile.PrimaryPart.Position
-                log("GoldPile (Model PrimaryPart) found at: " .. tostring(goldPos))
-            elseif goldPile:IsA("BasePart") then
-                goldPos = goldPile.Position
-                log("GoldPile (BasePart) found at: " .. tostring(goldPos))
-            else
-                log("GoldPile found, but no valid position (no Root, PrimaryPart, or not a BasePart).")
+    for _, model in ipairs(petsContainer:GetChildren()) do
+        if model:IsA("Model") then
+            local nameLower = model.Name:lower()
+            local shouldExclude = false
+            for _, keyword in ipairs(EXCLUDED_MODEL_KEYWORDS) do
+                if nameLower:find(keyword) then
+                    shouldExclude = true
+                    break
+                end
             end
-        else
-            log("'GoldPile' not found inside 'Game' folder within the interior for raider detection.")
-        end
-
-        if goldPos then
-            for _, model in ipairs(petsContainer:GetChildren()) do
-                if model:IsA("Model") then
-                    local nameLower = model.Name:lower()
-                    local shouldExclude = false
-                    for _, keyword in ipairs(EXCLUDED_MODEL_KEYWORDS) do
-                        if nameLower:find(keyword) then
-                            shouldExclude = true
-                            log("Excluding model '" .. model.Name .. "' due to keyword: '" .. keyword .. "'")
-                            break
+            if not shouldExclude then
+                local targetPart = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
+                if targetPart and targetPart:IsA("BasePart") then
+                    local dist = (targetPart.Position - goldPos).magnitude
+                    if dist <= GOLD_PILE_GUARD_RADIUS then
+                        log("Threat: " .. model.Name .. " within guard radius (" .. math.floor(dist) .. " studs). Teleporting.")
+                        local teleportPos = targetPart.Position + Vector3.new(0, 5, 0) -- Teleport slightly above
+                        local lookAtPos = targetPart.Position -- Look at the raider's position
+                        -- Ensure HRP is still valid before teleporting
+                        if hrp and hrp.Parent == currentCharacter then
+                            hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
+                            task.wait(0.005) -- Small wait after teleport
                         end
-                    end
-                    if not shouldExclude then
-                        local targetPart = model:FindFirstChild("RootPart") or model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
-                        if targetPart and targetPart:IsA("BasePart") then
-                            local dist = (targetPart.Position - goldPos).magnitude
-                            log("Checking raider: '" .. model.Name .. "' (Distance to Gold: " .. string.format("%.2f", dist) .. " studs)")
-
-                            if dist <= GOLD_PILE_GUARD_RADIUS then
-                                log("CONDITION MET: Threat: " .. model.Name .. " within guard radius (" .. math.floor(dist) .. " studs). Attempting teleport.")
-                                local teleportPos = targetPart.Position + Vector3.new(0, 5, 0) -- Teleport slightly above
-                                local lookAtPos = targetPart.Position
-
-                                log("Player HRP CFrame BEFORE teleport: " .. tostring(hrp.CFrame))
-                                log("Teleporting to Pos: " .. tostring(teleportPos) .. ", Looking at: " .. tostring(lookAtPos))
-
-                                pcall(function()
-                                    hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
-                                    log("Successfully teleported player to raider " .. model.Name .. ".")
-                                    log("Player HRP CFrame AFTER teleport: " .. tostring(hrp.CFrame))
-                                end)
-                                teleportedToTarget = true
-                                return -- Teleported to a raider, exit function
-                            else
-                                log("CONDITION NOT MET: Raider " .. model.Name .. " is " .. string.format("%.2f", dist) .. " studs from Gold, which is > " .. tostring(GOLD_PILE_GUARD_RADIUS) .. " studs.")
-                            end
-                        else
-                            log("Raider model '" .. model.Name .. "' has no valid RootPart, PrimaryPart, or HumanoidRootPart for teleportation.")
-                        end
+                        -- We teleport to the first detected raider and then return to let the loop continue
+                        -- This ensures we only teleport to one raider per call, then re-evaluate.
+                        return
                     end
                 end
             end
+        end
+    end
+    log("No raiders found within guard radius.")
+end
+
+-- Checks the current score and adjusts `scoreIncreasingActionsAllowed` (now uses global log)
+local function checkScoreAndAdjustActions()
+    local success, valueLabel = pcall(function()
+        return playerGui:WaitForChild("MinigameInGameApp", 5)
+            :WaitForChild("Body", 5)
+            :WaitForChild("Right", 5)
+            :WaitForChild("Container", 5)
+            :WaitForChild("ValueLabel", 5)
+    end)
+
+    if not success or not valueLabel or not valueLabel:IsA("TextLabel") then
+        log("❌ ValueLabel not found or not TextLabel after waiting.")
+        scoreIncreasingActionsAllowed = true -- Default to allowed if score cannot be read
+        return
+    end
+    logFinding("score_label", "Score ValueLabel", true)
+
+    local currentScore = tonumber(valueLabel.Text)
+    if not currentScore then
+        log("Could not parse score: " .. tostring(valueLabel.Text))
+        scoreIncreasingActionsAllowed = true -- Default to allowed if score cannot be parsed
+        return
+    end
+
+    local upperThreshold = TARGET_SCORE + SCORE_UPPER_TOLERANCE
+    local lowerThreshold = TARGET_SCORE - SCORE_LOWER_TOLERANCE
+
+    if currentScore > upperThreshold and scoreIncreasingActionsAllowed then
+        scoreIncreasingActionsAllowed = false
+        log(string.format("Score %d > upper threshold (%d). Pausing actions.", currentScore, upperThreshold))
+    elseif currentScore < lowerThreshold and not scoreIncreasingActionsAllowed then
+        scoreIncreasingActionsAllowed = true
+        log(string.format("Score %d < lower threshold (%d). Resuming actions.", currentScore, lowerThreshold))
+    end
+    log("Current Score: " .. currentScore)
+end
+
+-- Gets the teleport ring instance for initial teleport (now uses global log)
+local function getTeleportRingInstance()
+    local ring
+    local attempts = 0
+    local MAX_RING_ATTEMPTS = 60 -- Max attempts (30 seconds)
+    log("Starting search for Teleport Ring...")
+    repeat
+        local interiors = workspace:FindFirstChild("Interiors")
+        local summerfest = interiors and interiors:FindFirstChild("MainMap!Summerfest")
+        local joinZone = summerfest and summerfest:FindFirstChild("CoconutBonkJoinZone")
+        if joinZone and typeof(joinZone) == "Instance" and type(joinZone.FindFirstChild) == "function" then
+            local success, result = pcall(function() return joinZone:FindFirstChild("Ring") end)
+            if success then
+                ring = result
+                if ring then
+                    log("Found Teleport Ring at attempt: " .. attempts)
+                    break
+                end
+            else
+                log("Error during getTeleportRingInstance: " .. tostring(result))
+            end
         else
-            log("No valid GoldPile position found for raider detection. Cannot teleport to raiders.")
+            logFinding("join_zone", "CoconutBonkJoinZone", false)
+        end
+        task.wait(0.5)
+        attempts = attempts + 1
+    until ring or attempts >= MAX_RING_ATTEMPTS
+    if not ring then
+        warn("Failed to find Teleport Ring after maximum attempts.")
+    end
+    return ring
+end
+
+-- Performs an initial teleport to the game's entry point (now uses global log)
+local function initialTeleport()
+    local currentCharacter, hrp = getCharacterAndHRP()
+    local ring = getTeleportRingInstance()
+    if ring and hrp and hrp.Parent == currentCharacter then
+        local success, err = pcall(function()
+            hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0) -- Teleport slightly above the ring
+        end)
+        if not success then
+            warn("Initial teleport failed: " .. tostring(err))
+        else
+            log("Initial teleport successful.")
+            task.wait(0.5)
         end
     else
-        log("Pets container not found for raider detection.")
-    end
-
-    -- --- If no raiders were teleported to, attempt to teleport to the new specific Block part ---
-    -- Removed 'not hasTeleportedToBlock' to enable continuous teleport
-    if not teleportedToTarget then
-        log("No raiders found within guard radius. Checking for specific Block target...")
-        local targetBlockPart = findTargetBlock(bonkInterior)
-        if targetBlockPart and targetBlockPart:IsA("BasePart") then
-            log("CONDITION MET: Found specific Block target: " .. targetBlockPart.Name .. ". Attempting teleport.")
-            local teleportPos = targetBlockPart.Position + Vector3.new(0, 5, 0) -- Teleport slightly above
-            local lookAtPos = targetBlockPart.Position
-
-            log("Player HRP CFrame BEFORE teleport: " .. tostring(hrp.CFrame))
-            log("Teleporting to Block Pos: " .. tostring(teleportPos) .. ", Looking at: " .. tostring(lookAtPos))
-
-            pcall(function()
-                hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
-                task.wait(0.005)
-                log("Successfully teleported player to Block target " .. targetBlockPart.Name .. ".")
-            end)
-            teleportedToTarget = true
-            -- hasTeleportedToBlock is no longer set here
-            return -- Teleported to Block, exit function
-        else
-            log("Specific Block target not found or not a BasePart.")
-        end
-    end
-
-    if not teleportedToTarget then
-        log("No raiders or specific Block target found for teleportation.")
+        warn("No valid ring or HRP for initial teleport. Skipping.")
     end
 end
 
--- Main game loop that checks minigame status and performs actions
-spawn(function()
-    while true do
-        if scriptEnabled and isMinigameActive() then
-            handleHotbarAbilities()
-            handleTeleportToModels()
-            handleCannonCircleFeatures() -- Call the new Cannon Circle handler
-        else
-            log("Minigame not active or script disabled. Skipping actions.")
+-- Explicit "finding minigame" logic as requested (for the main minigame, now uses global log)
+local isFindingMinigame = false
+local function startFindingMinigame()
+    if isFindingMinigame then return end
+    isFindingMinigame = true
+    log("Starting to print 'finding minigame...' repeatedly.")
+    findingMinigameCoroutine = coroutine.wrap(function()
+        while isFindingMinigame do
+            log("finding minigame...")
+            task.wait(0.5)
         end
-        task.wait(1) -- Adjust this wait time as needed for responsiveness vs. performance
-    end
-end)
-
--- Create platform inside the minigame interior periodically
-local function createLargePlatformAtInterior()
-    local interior = findCoconutBonkInterior() -- Use the new find function
-    if not interior then
-        log("No minigame interior found for internal platform creation.")
-        return
-    end
-
-    -- Navigate to the SnowMound part within the interior
-    local visual = interior:FindFirstChild("Visual")
-    if not visual then
-        log("Could not find 'Visual' folder inside interior for platform placement.")
-        return
-    end
-    local tower = visual:FindFirstChild("Tower")
-    if not tower then
-        log("Could not find 'Tower' folder inside Visual for platform placement.")
-        return
-    end
-    local model = tower:FindFirstChild("Model")
-    if not model then
-        log("Could not find 'Model' folder inside Tower for platform placement.")
-        return
-    end
-    local snowMound = model:FindFirstChild("SnowMound")
-
-    if not snowMound or not snowMound:IsA("BasePart") then
-        log("Could not find 'SnowMound' part inside Model (or it's not a BasePart) for platform placement.")
-        return
-    end
-
-    log("Found SnowMound: " .. snowMound.Name)
-    log("SnowMound Position: " .. tostring(snowMound.Position))
-    log("SnowMound Size.Y: " .. tostring(snowMound.Size.Y))
-
-    local existing = interior:FindFirstChild("LargePlatform")
-    -- Check if the existing platform is in the desired state (size, color, material)
-    if existing and existing.Parent == interior and existing.Anchored and
-       existing.BrickColor == BrickColor.new("White") and
-       existing.Material == Enum.Material.Plastic and
-       existing.Size == Vector3.new(512, 1, 512) then
-        log("Platform already exists and is in desired state. Skipping recreation.")
-        return -- Do not recreate if it's already there and correct
-    end
-
-    if existing then
-        existing:Destroy() -- Destroy existing platform if it's not in the desired state
-        log("Destroyed existing LargePlatform (not in desired state).")
-    end
-
-    -- Calculate position for the platform to be just above the SnowMound's top surface.
-    -- Platform height is 1 stud. We want its bottom to be above SnowMound's top.
-    local platformHeight = 1
-    local newPlatformY = snowMound.Position.Y + (snowMound.Size.Y / 2) + (platformHeight / 2) + PLATFORM_CLEARANCE_ABOVE_SNOWMOUND
-
-    local newPlatformPosition = Vector3.new(
-        snowMound.Position.X,
-        newPlatformY,
-        snowMound.Position.Z
-    )
-
-    log("Calculated new platform position (above SnowMound): " .. tostring(newPlatformPosition) .. " (Y: " .. string.format("%.2f", newPlatformPosition.Y) .. ")")
-
-    -- Create the platform relative to this calculated position, parented to the interior
-    createLargePlatform(newPlatformPosition, interior)
-    log("Platform creation requested at: " .. tostring(newPlatformPosition) .. " inside " .. interior.Name)
+        log("'finding minigame...' printing stopped.")
+    end)
+    task.spawn(findingMinigameCoroutine)
 end
 
--- Run internal platform creation every 10 seconds
-spawn(function()
+local function stopFindingMinigame()
+    if isFindingMinigame then
+        isFindingMinigame = false
+        if findingMinigameCoroutine then
+            -- No explicit way to cancel a running coroutine, but the loop condition handles it.
+            findingMinigameCoroutine = nil
+        end
+        log("Stopped printing 'finding minigame...'.")
+    end
+end
+
+-- Function to handle auto close reward logic (now uses global log)
+local function handleAutoCloseReward()
+    if not autoCloseRewardActive then return end
+
+    local rewardApp = playerGui:FindFirstChild("MinigameRewardsApp")
+    if rewardApp and rewardApp.Enabled then
+        local body = rewardApp:FindFirstChild("Body")
+        if body then
+            local closeButton = body:FindFirstChild("Button") -- Assuming the button is directly named "Button"
+            if closeButton and closeButton:IsA("GuiButton") and closeButton.Visible and closeButton.Active then
+                log("Attempting to auto-close reward app.")
+                fireSpecificClickEvents(closeButton)
+            else
+                log("Reward close button not found or not active.")
+            end
+        else
+            log("MinigameRewardsApp Body not found.")
+        end
+    else
+        -- log("MinigameRewardsApp not found or not enabled.") -- Too chatty if constantly checking
+    end
+end
+
+-- Function to handle auto click hotbar logic (now uses global log)
+local function handleAutoClickHotbar()
+    if autoClickHotbarActive then
+        log("Executing Auto Click Hotbar script...")
+        local success, err = pcall(function()
+            loadstring(game:HttpGet(('https://raw.githubusercontent.com/UnclesVan/ValentinesDay-2025/refs/heads/main/SUMMERFEST2025AUTOCLICKER')))()
+        end)
+        if not success then
+            log("Error executing Auto Click Hotbar script: " .. tostring(err))
+        else
+            log("Auto Click Hotbar script executed. Note: This script, once loaded, may run independently.")
+        end
+        -- Since loadstring typically runs once to inject a script, we immediately turn off the toggle
+        -- to prevent re-execution on every loop iteration. The external script manages its own state.
+        autoClickHotbarActive = false
+        -- Update the Fluent UI button to reflect this
+        if autoClickHotbarFluentBtn then -- Make sure the button reference exists
+            autoClickHotbarFluentBtn:SetTitle("Auto Click Hotbar: OFF")
+            autoClickHotbarFluentBtn:SetValue(false) -- Set Fluent Toggle value to false
+        end
+    end
+end
+
+-- --- Fluent UI Elements ---
+do
+    local TreasureDefenceTab = Tabs.TreasureDefence
+
+    -- Script Controls Section
+    local scriptControlsSection = TreasureDefenceTab:AddSection("Script Controls")
+    scriptToggleFluentBtn = scriptControlsSection:AddToggle("AutoScriptToggle", {
+        Title = "Script: OFF",
+        Description = "Enable or disable the main script functionality.",
+        Default = false,
+    })
+
+    scriptToggleFluentBtn:OnChanged(function(state)
+        scriptEnabled = state
+        scriptToggleFluentBtn:SetTitle("Script: " .. (state and "ON" or "OFF"))
+        
+        log("Script toggled: " .. tostring(scriptEnabled))
+
+        if scriptEnabled then
+            -- Actions to take when script is enabled
+            local currentCharacter, hrp = getCharacterAndHRP()
+            local ring = getTeleportRingInstance()
+            if ring and hrp and hrp.Parent == currentCharacter then
+                local success, err = pcall(function()
+                    hrp.CFrame = ring.CFrame + Vector3.new(0, 5, 0)
+                end)
+                if not success then
+                    warn("Teleport on toggle failed: " .. tostring(err))
+                else
+                    log("Teleported to minigame entry on script enable.")
+                    task.wait(0.5)
+                end
+            else
+                warn("Could not teleport: ring or HRP missing for initial teleport on toggle ON.")
+            end
+        else
+            -- Actions to take when script is disabled
+            scoreIncreasingActionsAllowed = true -- Reset score control on disable
+            stopFindingMinigame() -- Stop the "finding minigame" loop
+            log("All main script features deactivated.")
+        end
+    end)
+    -- Ensure initial state is reflected
+    scriptToggleFluentBtn:SetTitle("Script: " .. (scriptEnabled and "ON" or "OFF"))
+    scriptToggleFluentBtn:SetValue(scriptEnabled)
+
+
+    -- Boat Teleportation Button (Coming Soon)
+    scriptControlsSection:AddButton({
+        Title = "Boat Teleportation (Coming Soon)",
+        Description = "This feature will be available in a future update.",
+        Callback = function()
+            log("Boat Teleportation feature is coming soon!")
+        end
+    })
+
+
+    -- Feature Toggles Section
+    local featureTogglesSection = TreasureDefenceTab:AddSection("Feature Toggles")
+
+    autoCloseRewardFluentBtn = featureTogglesSection:AddToggle("AutoCloseRewardToggle", {
+        Title = "Auto Close Reward: OFF",
+        Description = "Automatically closes reward pop-ups.",
+        Default = autoCloseRewardActive,
+    })
+    autoCloseRewardFluentBtn:OnChanged(function(state)
+        autoCloseRewardActive = state
+        autoCloseRewardFluentBtn:SetTitle("Auto Close Reward: " .. (state and "ON" or "OFF"))
+        log("Auto Close Reward: " .. (state and "ON" or "OFF"))
+    end)
+    autoCloseRewardFluentBtn:SetTitle("Auto Close Reward: " .. (autoCloseRewardActive and "ON" or "OFF"))
+    autoCloseRewardFluentBtn:SetValue(autoCloseRewardActive)
+
+    autoClickHotbarFluentBtn = featureTogglesSection:AddToggle("AutoClickHotbarToggle", {
+        Title = "Auto Click Hotbar: OFF",
+        Description = "Loads and enables an external auto-clicker for hotbar items.",
+        Default = autoClickHotbarActive,
+    })
+    autoClickHotbarFluentBtn:OnChanged(function(state)
+        local prevState = autoClickHotbarActive
+        autoClickHotbarActive = state
+        autoClickHotbarFluentBtn:SetTitle("Auto Click Hotbar: " .. (state and "ON" or "OFF"))
+        if autoClickHotbarActive then
+            log("Auto Click Hotbar: ON (Executing script...)")
+            handleAutoClickHotbar() -- This function now knows about autoClickHotbarFluentBtn
+        else
+            log("Auto Click Hotbar: OFF (Note: External script may continue to run if already loaded.)")
+        end
+    end)
+    autoClickHotbarFluentBtn:SetTitle("Auto Click Hotbar: " .. (autoClickHotbarActive and "ON" or "OFF"))
+    autoClickHotbarFluentBtn:SetValue(autoClickHotbarActive)
+
+
+    -- Console Log Section
+    local consoleLogSection = TreasureDefenceTab:AddSection("Console Log")
+    -- The initial content can be set here. The 'log' function will append to it via 'internalLogLines'
+    consoleOutputElement = consoleLogSection:AddParagraph({
+        Title = "LogOutput", -- The title for the paragraph element
+        Content = "Console Log:\nScript Version: 2025-07-07_ConsolidatedUIAndLogic_v70" -- Initial content
+    })
+    -- Initialize internalLogLines with the initial content
+    internalLogLines = string.split("Console Log:\nScript Version: 2025-07-07_ConsolidatedUIAndLogic_v70", "\n")
+
+
+    -- Changelog Section
+    local changelogSection = TreasureDefenceTab:AddSection("Changelog")
+    local changelogContent = [[
+Changelog:
+v70 (2025-07-07):
+- Fixed AdoptMe/Sumar toggle disappearing by making it a separate ScreenGui.
+- AdoptMe/Sumar UI toggle now correctly controls the Enabled property of the MainConsole UI.
+
+v69 (2025-07-07):
+- AdoptMe/Sumar UI toggle now controls the Enabled property of the MainConsole UI itself.
+
+v68 (2025-07-07):
+- Integrated AdoptMe/Sumar UI toggle functionality. Clicking the circular button now hides/shows the main game UIs.
+
+v65 (2025-07-07):
+- Added placeholder entries for future updates (Boat Teleportation, Summer Fest Week 2).
+
+v64 (2025-07-07):
+- Adjusted console UI size to be slightly smaller as requested.
+
+v63 (2025-07-07):
+- Added dedicated Changelog section to the UI.
+- Restructured console UI to support side-by-side log and changelog.
+
+v62 (2025-07-07):
+- Removed "Auto Close Rewards" feature as requested.
+- Wrapped all `log()` and `logFinding()` calls with `pcall` for error robustness.
+
+v61 (2025-07-07):
+- Temporarily disabled external "Auto Click Hotbar" script (`loadstring`) for debugging "attempt to call a string value" error.
+- Added `pcall` wrappers around ALL `log()` and `logFinding()` calls to prevent script crashes if these functions are corrupted.
+
+v60 (2025-07-07):
+- Integrated "Rewards Button" auto-clicking functionality with a dedicated toggle button in the UI.
+- Added diagnostic print statements to check the type of `log` and `logFinding` functions at runtime.
+
+v59 (2025-07-07):
+- Fixed "attempt to call a string value" error by ensuring `logFinding` is globally accessible.
+- Corrected typo in `UserInputService.InputEnded` for draggable UI.
+
+v58 (2025-07-07):
+- Implemented "Auto Close Reward" toggle button and logic.
+- Implemented "Auto Click Hotbar" toggle button and logic (loads external script).
+
+v57 (2025-07-07):
+- Consolidated all UI elements into a single draggable console window.
+- Added main script ON/OFF toggle.
+- Added "Boat Teleportation (Coming soon)" button.
+- Improved console log display with scrolling and line limits.
+- Enhanced anti-AFK movement with random rotations and shifts.
+- Refined `getCharacterAndHRP` for better robustness.
+
+v56 (2025-07-07):
+- Fixed draggable UI getting stuck after release (removed `input.Handled = true`).
+- Initial implementation of consolidated UI framework.
+    ]]
+    changelogSection:AddParagraph({
+        Title = "Changelog",
+        Content = changelogContent
+    })
+end
+
+
+-- Initial character and HRP retrieval using the robust function
+character, humanoidRootPart = getCharacterAndHRP()
+
+-- --- INITIALIZATION ---
+-- Removed createAdoptMeToggleUI() call
+task.wait(0.1) -- Small wait to ensure UI elements are fully rendered and accessible
+initialTeleport() -- Perform initial teleport regardless of scriptEnabled state
+
+-- --- MAIN LOOP ---
+spawn(function() -- Use spawn to run this in a separate thread
     while true do
-        createLargePlatformAtInterior() -- This function now handles one-time creation
-        task.wait(10)
+        if scriptEnabled then
+            -- This block runs only when the main script is enabled
+            if isMinigameActive() then
+                -- Found interior
+                stopFindingMinigame() -- Stop the explicit "finding minigame" message
+
+                local ok, err = pcall(checkScoreAndAdjustActions)
+                if not ok then warn("Error in checkScoreAndAdjustActions: " .. tostring(err)) end
+
+                -- Handle start button for TreasureDefenseExplainerApp
+                local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
+                if tda and tda.Enabled then
+                    local startScreen = tda:FindFirstChild("StartScreen")
+                    if startScreen and startScreen.Visible then
+                        local depthBtn = startScreen:FindFirstChild("DepthButton")
+                        if depthBtn and depthBtn.Visible and depthBtn.Active then
+                            local success, err = pcall(clickButton, depthBtn)
+                            if not success then warn("Error clicking DepthButton: " .. tostring(err)) end
+                            hasClickedStartButton = true
+                        end
+                    end
+                end
+                -- Reset hasClickedStartButton if the app is no longer enabled
+                if not (playerGui:FindFirstChild("TreasureDefenseExplainerApp") and playerGui.TreasureDefenseExplainerApp.Enabled) then
+                    hasClickedStartButton = false
+                end
+
+                if hotbarSpamActive then
+                    local ok, err = pcall(handleHotbarAbilities)
+                    if not ok then warn("Error in handleHotbarAbilities: " .. tostring(err)) end
+                    task.wait(0.1)
+                end
+
+                -- Only teleport to raiders if active
+                if teleportToRaidersActive then
+                    local ok, err = pcall(handleTeleportToModels)
+                    if not ok then warn("Error in handleTeleportToModels: " .. tostring(err)) end
+                    task.wait(0.005) -- Keep a small wait to prevent excessive teleport calls
+                end
+
+                -- NEW: Call auto close reward handler
+                local ok, err = pcall(handleAutoCloseReward)
+                if not ok then warn("Error in handleAutoCloseReward: " .. tostring(err)) end
+
+            else
+                -- Not in minigame
+                log("DEBUG: Main loop: Minigame is NOT active. Calling startFindingMinigame().")
+                startFindingMinigame() -- Start the explicit "finding minigame" message
+
+                -- Handle start button again if needed (as it's outside the minigame active check in your logic)
+                local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
+                if tda and tda.Enabled then
+                    local startScreen = tda:FindFirstChild("StartScreen")
+                    if startScreen and startScreen.Visible then
+                        local depthBtn = startScreen:FindFirstChild("DepthButton")
+                        if depthBtn and depthBtn.Visible and depthBtn.Active then
+                            local success, err = pcall(clickButton, depthBtn)
+                            if not success then warn("Error clicking DepthButton: " .. tostring(err)) end
+                            hasClickedStartButton = true
+                        end
+                    end
+                end
+                if not (playerGui:FindFirstChild("TreasureDefenseExplainerApp") and playerGui.TreasureDefenseExplainerApp.Enabled) then
+                    hasClickedStartButton = false
+                end
+                if not scoreIncreasingActionsAllowed then
+                    scoreIncreasingActionsAllowed = true
+                    log("Minigame inactive, resetting score actions.")
+                end
+                task.wait(2) -- Wait longer when minigame is not active
+            end
+
+            -- --- Anti-AFK noticeable rotation and movement ---
+            local currentCharacter, hrp = getCharacterAndHRP()
+            if hrp then
+                local success, err = pcall(function()
+                    -- Generate a random axis
+                    local axisX = math.random(-1, 1)
+                    local axisY = math.random(-1, 1)
+                    local axisZ = math.random(-1, 1)
+                    -- Random angle between 5 and 20 degrees (~0.087 to 0.349 radians)
+                    local angleDeg = math.random(5, 20)
+                    local angleRad = math.rad(angleDeg)
+                    -- Normalize axis
+                    local axisLen = math.sqrt(axisX^2 + axisY^2 + axisZ^2)
+                    if axisLen > 0 then
+                        axisX, axisY, axisZ = axisX/axisLen, axisY/axisLen, axisZ/axisLen
+                    else
+                        axisX, axisY, axisZ = 0, 1, 0 -- fallback axis
+                    end
+                    local rotationCFrame = CFrame.fromAxisAngle(Vector3.new(axisX, axisY, axisZ), angleRad)
+                    -- Random small positional shift
+                    local shiftX = math.random(-0.2, 0.2)
+                    local shiftY = math.random(-0.2, 0.2)
+                    local shiftZ = math.random(-0.2, 0.2)
+                    local shiftVec = Vector3.new(shiftX, shiftY, shiftZ)
+                    -- Randomly choose to rotate, shift, or both
+                    local actionType = math.random(1,3)
+                    if actionType == 1 then
+                        hrp.CFrame = hrp.CFrame * rotationCFrame
+                    elseif actionType == 2 then
+                        hrp.CFrame = hrp.CFrame * CFrame.new(shiftVec)
+                    else
+                        hrp.CFrame = hrp.CFrame * rotationCFrame * CFrame.new(shiftVec)
+                    end
+                end)
+                if not success then
+                    warn("Enhanced movement error: " .. tostring(err))
+                end
+            end
+        else
+            -- When main script is disabled, ensure "finding minigame" is stopped
+            stopFindingMinigame()
+            task.wait(1) -- Wait longer when script is not active to reduce CPU usage
+        end
+        task.wait(0.01) -- Small wait for the main loop iteration
     end
 end)
-
--- Save and Load settings using Fluent's SaveManager
-SaveManager:SetWindow(Window)
-SaveManager:SetElements({
-    mainToggle,
-    autoSwingToggle,
-    antiRagdollToggle, -- Added new toggle to SaveManager
-    cannonCircleToggle, -- Added new Cannon Circle toggle to SaveManager
-    speedSlider
-})
-SaveManager:LoadConfig() -- Load saved settings on script initialization
-
--- Set up the Fluent UI interface manager
-InterfaceManager:SetInterface({
-    Window = Window,
-    ThemeFolder = "FluentThemes",
-    ConfigFolder = "FluentConfigs"
-})
 
 log("Script initialization complete. Console is now active.")
