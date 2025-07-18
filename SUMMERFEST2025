@@ -234,7 +234,6 @@ task.spawn(function()
             warn("AFK Preventer: An error occurred during AFK teleport destruction attempt: " .. tostring(errorMessage))
         end
 
-        -- Wait for a short period before attempting again to avoid excessive resource usage.
         task.wait(1) -- Current delay is 1 second.
     end
 end)
@@ -316,8 +315,7 @@ local mainToggle = Tabs.TreasureDefence:AddToggle("AutoScriptToggle", {
     Default = false,
 })
 
--- New state variable for one-time block teleport
-local hasTeleportedToBlock = false
+-- Removed hasTeleportedToBlock as it's no longer needed for continuous teleport
 
 local function toggleScript(state)
     scriptEnabled = state
@@ -335,11 +333,7 @@ local function toggleScript(state)
         else
             log("Could not teleport to main ring (ring or player HRP missing).")
         end
-        -- Reset one-time teleport flag when script is enabled
-        hasTeleportedToBlock = false
-    else
-        -- When script is disabled, ensure the flag is reset
-        hasTeleportedToBlock = false
+        -- hasTeleportedToBlock is no longer reset here as it's removed
     end
 end
 
@@ -689,7 +683,8 @@ local function handleTeleportToModels()
     end
 
     -- --- If no raiders were teleported to, attempt to teleport to the new specific Block part ---
-    if not teleportedToTarget and not hasTeleportedToBlock then -- Only attempt if no raiders and not already teleported to block
+    -- Removed 'not hasTeleportedToBlock' to enable continuous teleport
+    if not teleportedToTarget then
         log("No raiders found within guard radius. Checking for specific Block target...")
         local targetBlockPart = findTargetBlock(bonkInterior)
         if targetBlockPart and targetBlockPart:IsA("BasePart") then
@@ -706,7 +701,7 @@ local function handleTeleportToModels()
                 log("Successfully teleported player to Block target " .. targetBlockPart.Name .. ".")
             end)
             teleportedToTarget = true
-            hasTeleportedToBlock = true -- Set the flag to true after successful teleport
+            -- hasTeleportedToBlock is no longer set here
             return -- Teleported to Block, exit function
         else
             log("Specific Block target not found or not a BasePart.")
