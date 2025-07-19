@@ -1,38 +1,9 @@
---!strict
-
--- Dehash script
-local success_dehash, err_dehash = pcall(function()
-    loadstring(game:HttpGet('https://raw.githubusercontent.com/UnclesVan/AdoPtMe-/refs/heads/main/dehashwithslashinmiddle'))()
-end)
-if not success_dehash then warn("Dehash failed: " .. err_dehash) end
-task.wait(2)
-
--- Load Fluent libraries
-local Fluent = nil
-local SaveManager = nil
-local InterfaceManager = nil
-
-local success_fluent, err_fluent = pcall(function()
-    Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-end)
-local success_save, err_save = pcall(function()
-    SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-end)
-local success_interface, err_interface = pcall(function()
-    InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
-end)
-
--- Debug prints for Fluent addon loading
-print("Type of SaveManager after direct load: " .. typeof(SaveManager))
-print("Type of InterfaceManager after direct load: " .. typeof(InterfaceManager))
-print("Type of InterfaceManager.SetTheme: " .. typeof(InterfaceManager and InterfaceManager.SetTheme))
 
 
-if not Fluent then
-    error("Failed to load Fluent UI library. Please check your internet connection or the URL.")
-end
+-- Full Script with correct order and consolidated UI and game logic
 
--- Services
+print("Script Version: 2025-07-07_ConsolidatedUIAndLogic_v70")
+
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -41,51 +12,9 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
--- Create main Fluent UI window
-local Window = Fluent:CreateWindow({
-    Title = "SummerFest 2025 Automation v75", -- Updated title
-    SubTitle = "by dawid", -- Updated subtitle
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-})
-
--- Define Tabs
-local Tabs = {
-    TreasureDefence = Window:AddTab({ Title = "Treasure Defence", Icon = "shield-alt" }),
-    CannonCircle = Window:AddTab({ Title = "Cannon Circle", Icon = "bullseye" }),
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
-}
-
--- Hand the library over to our managers and set up their sections
-if SaveManager and typeof(SaveManager) == "table" and typeof(SaveManager.SetLibrary) == "function" then
-    SaveManager:SetLibrary(Fluent)
-    -- SaveManager:IgnoreThemeSettings() -- Uncomment if you want to ignore theme settings in config
-    -- SaveManager:SetIgnoreIndexes({}) -- Uncomment and add indexes to ignore specific elements
-    SaveManager:SetFolder("FluentScriptHub/specific-game") -- Example folder, adjust if needed
-    SaveManager:BuildConfigSection(Tabs.Settings)
-    SaveManager:LoadAutoloadConfig()
-    print("SaveManager initialized successfully.")
-else
-    warn("SaveManager could not be initialized or is missing SetLibrary. (Type: " .. typeof(SaveManager) .. ")")
-end
-
-if InterfaceManager and typeof(InterfaceManager) == "table" and typeof(InterfaceManager.SetTheme) == "function" then
-    InterfaceManager:SetLibrary(Fluent)
-    InterfaceManager:SetFolder("FluentScriptHub") -- Example folder, adjust if needed
-    InterfaceManager:BuildInterfaceSection(Tabs.Settings)
-    print("InterfaceManager initialized successfully.")
-else
-    warn("InterfaceManager could not be initialized or is missing SetTheme. (Type: " .. typeof(InterfaceManager) .. ")")
-end
-
-Fluent:Notify({
-    Title = "Loaded",
-    Content = "Script loaded successfully.",
-    Duration = 3
-})
+-- Ensure character and humanoidrootpart are available from the start, with robust checks
+local character = player.Character
+local humanoidRootPart = nil
 
 -- --- SCRIPT STATE ---
 local scriptEnabled = false -- Controls the main script loop
@@ -93,15 +22,17 @@ local hotbarSpamActive = true -- Example feature state (controlled by scriptEnab
 local teleportToRaidersActive = true -- ONLY THIS TELEPORT IS ACTIVE (controlled by scriptEnabled's main loop)
 local scoreIncreasingActionsAllowed = true
 local hasClickedStartButton = false
+local autoCloseRewardActive = false -- New: State for auto close reward toggle
 local autoClickHotbarActive = false -- New: State for auto click hotbar toggle
-local rewardsAutoClickActive = false -- State for auto click rewards button (now controls new logic)
-local detectKelpRaiderShipsActive = true -- State for detecting kelp raider ships
-local cannonCircleActive = false -- NEW: State for Cannon Circle automation
+local rewardsAutoClickActive = false -- State for auto click rewards button
+
+-- NEW: Toggle UI State
+local isAdoptMeActive = true -- Initial state for the AdoptMe/Sumar toggle
 
 -- --- CONFIGURATION ---
 local FROSTCLAWS_HOTBAR_APP_NAME = "MinigameHotbarApp"
 local DROP_BUTTON_NAME = "DropButton"
-local SWORD_BUTTON_NAME = "Sword_Button" -- Corrected from "SwordButton" based on common Roblox UI naming
+local SWORD_BUTTON_NAME = "SwordButton"
 local EXCLUDED_MODEL_KEYWORDS = {"parrot", "cage"} -- Models to exclude from teleportation
 local COCONUT_BONK_INTERIOR_BASE_NAME = "CoconutBonkInterior"
 local GOLD_PILE_GUARD_RADIUS = 30 -- Radius around GoldPile to detect raiders
@@ -110,44 +41,40 @@ local SCORE_UPPER_TOLERANCE = 50
 local SCORE_LOWER_TOLERANCE = 50
 local MAX_CONSOLE_LINES = 20
 local LOG_FINDING_COOLDOWN = 1
-local REWARDS_BUTTON_PATH = "MinigameRewardsApp.Body.Button" -- Original path to the rewards button (kept for reference, but not used in handleRewardsAutoClick anymore)
+local REWARDS_BUTTON_PATH = "MinigameRewardsApp.Body.Button" -- Path to the rewards button
 
-local TURRET_PARENT_CONTAINER_INDEX = 65
-local TURRET_1_NAME = "Meshes/Castle_Crenelation_V3" -- This is a specific name, not an index
-local TURRET_2_INDEX = 2 -- This is an index within the "Turrets" folder
+-- NEW: Toggle UI Configuration
+local TOGGLE_SCREEN_GUI_NAME = "AdoptMeToggleGui"
+local TOGGLE_FRAME_NAME = "ToggleCircleFrame"
+local ADOPTME_TEXT_NAME = "AdoptMeText"
+local SUMAR_TEXT_NAME = "SumarText"
+local CLICK_BUTTON_NAME = "ClickButton"
 
--- Constants for minigame phases
-local TELEPORT_PHASE_PILES = "Piles"
-local TELEPORT_PHASE_TURRETS = "Turrets"
-local TELEPORT_PHASE_RAIDERS_SHIPS = "Raiders & Ships"
-local TELEPORT_PHASE_INTERVAL = 2 -- seconds to wait between phases for automation loop
+local TOGGLE_SIZE = UDim2.new(0, 100, 0, 100) -- Size of the circular frame (e.g., 100x100 pixels)
+local INITIAL_TOGGLE_POSITION = UDim2.new(0.5, 0, 0.8, 0) -- Centered horizontally, 80% down the screen
+local ANCHOR_POINT = Vector2.new(0.5, 0.5) -- Anchor the frame from its center
 
--- Constant for score log cooldown
-local SCORE_LOG_COOLDOWN = 5 -- seconds
+local ADOPTME_COLOR = Color3.fromRGB(255, 100, 100) -- Light red for ADOPTME state
+local SUMAR_COLOR = Color3.fromRGB(50, 150, 255)    -- Blue for SUMAR state
+
+local BOUNCE_OFFSET_Y = 10 -- How much the toggle bobs up and down
+local BOUNCE_SPEED = 3     -- Speed of the bobbing animation
 
 -- --- INTERNAL ---
+local consoleTextLabel = nil -- Reference to the TextLabel for logging
 local lastLogTime = {} -- For logFinding cooldowns
 local findingMinigameCoroutine = nil -- To manage the "finding minigame..." loop
-local lastScoreLogTime = 0 -- For score logging cooldown
-local lastNoThreatLogTime = 0 -- For no threat logging cooldown
 
--- References to Fluent UI elements for updating
-local scriptToggleFluentBtn = nil
-local autoClickHotbarFluentBtn = nil
-local rewardsAutoClickFluentBtn = nil
-local teleportToRaidersFluentBtn = nil
-local hotbarSpamFluentBtn = nil
-local detectKelpRaiderShipsFluentBtn = nil
-local cannonCircleFluentBtn = nil -- NEW: Fluent UI element for Cannon Circle toggle
-local consoleOutputElement = nil -- This will be the actual Fluent UI element we write to
+-- NEW: Toggle UI Element References (now global within this script's scope)
+local toggleScreenGui: ScreenGui
+local toggleFrame: Frame
+local adoptMeText: TextLabel
+local sumarText: TextLabel
+local clickButton: TextButton
 
--- New: Internal table to manage console log lines
-local internalLogLines = {}
+-- NEW: Reference to the main console ScreenGui itself
+local mainConsoleGui: ScreenGui
 
-
--- Ensure character and humanoidrootpart are available from the start, with robust checks
-local character = player.Character
-local humanoidRootPart = nil
 
 -- --- FUNCTIONS ---
 
@@ -184,34 +111,44 @@ local function getCharacterAndHRP()
     return currentCharacter, currentHrp
 end
 
--- Utility function for logging to the console UI
+-- Utility function for logging to the console UI (now global)
 function log(message, debugTag)
-    local timestamp = os.date("%H:%M:%S", os.time())
-    local formattedMessage = "[" .. timestamp .. "] " .. tostring(message)
-    if debugTag then
-        formattedMessage = formattedMessage .. " " .. debugTag
-    end
-
-    -- Check if consoleOutputElement is a valid Fluent Paragraph and has SetContent
-    if consoleOutputElement and typeof(consoleOutputElement) == "table" and typeof(consoleOutputElement.SetContent) == "function" then
+    if consoleTextLabel then
         local success, err = pcall(function()
-            -- Add new message to our internal log history
-            table.insert(internalLogLines, formattedMessage)
-
-            -- Limit lines
-            if #internalLogLines > MAX_CONSOLE_LINES then
-                table.remove(internalLogLines, 1) -- Remove oldest line
+            local timestamp = os.date("%H:%M:%S", os.time())
+            local formattedMessage = "[" .. timestamp .. "] " .. tostring(message)
+            if debugTag then
+                formattedMessage = formattedMessage .. " " .. debugTag
             end
 
-            -- Update the Fluent Paragraph element using SetContent
-            consoleOutputElement:SetContent(table.concat(internalLogLines, "\n"))
+            local currentText = consoleTextLabel.Text
+            local lines = {}
+            -- Split by newline, handling empty lines correctly
+            for line in currentText:gmatch("([^\n]*)\n?") do
+                if line ~= "" then
+                    table.insert(lines, line)
+                end
+            end
+
+            -- Limit lines to prevent console overflow
+            if #lines >= MAX_CONSOLE_LINES then
+                table.remove(lines, 1) -- Remove oldest line
+            end
+
+            table.insert(lines, formattedMessage)
+            consoleTextLabel.Text = table.concat(lines, "\n")
+            -- Auto-scroll to bottom
+            local textScroller = consoleTextLabel.Parent
+            if textScroller and textScroller:IsA("ScrollingFrame") then
+                textScroller.CanvasPosition = Vector2.new(0, textScroller.CanvasSize.Y.Offset - textScroller.AbsoluteSize.Y)
+            end
         end)
         if not success then
-            warn("Error writing to Fluent UI console output: " .. tostring(err) .. ". Falling back to print().")
-            print(formattedMessage) -- Fallback to Roblox output if UI write fails
+            warn("Error writing to consoleTextLabel: " .. tostring(err))
+            print(message) -- Fallback to Roblox output if UI write fails
         end
     else
-        print(formattedMessage) -- Fallback to Roblox output if console UI not ready or SetContent is missing
+        print(message) -- Fallback to Roblox output if console UI not ready
     end
 end
 
@@ -234,51 +171,74 @@ local function logFinding(key, messageName, isFound)
     end
 end
 
+-- Fires connections for a given RBXScriptSignal (now uses global log)
+local function fireConnections(connections, eventName)
+    if connections then
+        for _, conn in pairs(connections) do
+            if typeof(conn) == "RBXScriptConnection" and type(conn.Fire) == "function" then
+                local success, err = pcall(function() conn:Fire() end)
+                if not success then
+                    log("Failed to fire " .. eventName .. " connection: " .. tostring(err))
+                end
+            else
+                log("Warning: Invalid " .. eventName .. " connection. Type: " .. typeof(conn))
+            end
+        end
+    end
+end
+
 -- Simulates a button click (general purpose, now uses global log)
 local function clickButton(button)
-    if not (button and button.Parent and button.Visible and button.Active) then
-        log("Button invalid or not visible/active for clicking: " .. (button and button.Name or "nil"))
-        return
-    end
-
-    log("Attempting to click: " .. button.Name)
-
-    local success_down, connectionsDown = pcall(function() return getconnections(button.MouseButton1Down) end)
-    if success_down and connectionsDown then
-        log("MouseButton1Down connections found: " .. #connectionsDown .. ". Firing...")
-        for i, connection in ipairs(connectionsDown) do
-            local s, e = pcall(function() connection:Fire() end)
-            if not s then log("Failed to fire MouseButton1Down connection " .. i .. ": " .. tostring(e)) end
+    if button and button.Visible and button.Active then
+        log("Clicking: " .. button.Name)
+        local successDown, resultDown = pcall(function() return getconnections(button.MouseButton1Down) end)
+        if successDown and type(resultDown) == "table" then
+            fireConnections(resultDown, "MouseButton1Down")
+        end
+        task.wait(0.05)
+        local successClick, resultClick = pcall(function() return getconnections(button.MouseButton1Click) end)
+        if successClick and type(resultClick) == "table" then
+            fireConnections(resultClick, "MouseButton1Click")
+        end
+        task.wait(0.05)
+        local successUp, resultUp = pcall(function() return getconnections(button.MouseButton1Up) end)
+        if successUp and type(resultUp) == "table" then
+            fireConnections(resultUp, "MouseButton1Up")
         end
     else
-        log("Warning: Could not get MouseButton1Down connections for " .. button.Name .. ". Error: " .. tostring(connectionsDown))
+        warn("Cannot click button: " .. (button and button.Name or "nil") .. ". Not visible or active.")
     end
-    task.wait(0.05)
+end
 
-    local success_click, connectionsClick = pcall(function() return getconnections(button.MouseButton1Click) end)
-    if success_click and connectionsClick then
-        log("MouseButton1Click connections found: " .. #connectionsClick .. ". Firing...")
-        for i, connection in ipairs(connectionsClick) do
-            local s, e = pcall(function() connection:Fire() end)
-            if not s then log("Failed to fire MouseButton1Click connection " .. i .. ": " .. tostring(e)) end
+-- Specific click logic for Auto Close Reward button, as provided by user (now uses global log)
+local function fireSpecificClickEvents(buttonInstance)
+    if buttonInstance and buttonInstance:IsA("GuiButton") and buttonInstance.Parent then -- Check if it's a valid GuiButton and still exists
+        -- Attempt to fire MouseButton1Down, MouseButton1Click, and MouseButton1Up
+        -- This sequence attempts to mimic a full user click action
+        local success, connectionsDown = pcall(function() return getconnections(buttonInstance.MouseButton1Down) end)
+        if success and type(connectionsDown) == "table" then
+            for _, connection in pairs(connectionsDown) do
+                pcall(function() connection:Fire() end) -- Wrap in pcall for safety
+            end
         end
-    else
-        log("Warning: Could not get MouseButton1Click connections for " .. button.Name .. ". Error: " .. tostring(connectionsClick))
-    end
-    task.wait(0.05)
-
-    local success_up, connectionsUp = pcall(function() return getconnections(button.MouseButton1Up) end)
-    if success_up and connectionsUp then
-        log("MouseButton1Up connections found: " .. #connectionsUp .. ". Firing...")
-        for i, connection in ipairs(connectionsUp) do
-            local s, e = pcall(function() connection:Fire() end)
-            if not s then log("Failed to fire MouseButton1Up connection " .. i .. ": " .. tostring(e)) end
+        task.wait(0.05) -- Small delay between firing events for realism
+        local success, connectionsClick = pcall(function() return getconnections(buttonInstance.MouseButton1Click) end)
+        if success and type(connectionsClick) == "table" then
+            for _, connection in pairs(connectionsClick) do
+                pcall(function() connection:Fire() end) -- Wrap in pcall for safety
+            end
         end
+        task.wait(0.05)
+        local success, connectionsUp = pcall(function() return getconnections(buttonInstance.MouseButton1Up) end)
+        if success and type(connectionsUp) == "table" then
+            for _, connection in pairs(connectionsUp) do
+                pcall(function() connection:Fire() end) -- Wrap in pcall for safety
+            end
+        end
+        log("Successfully sent click events to: " .. buttonInstance.Name)
     else
-        log("Warning: Could not get MouseButton1Up connections for " .. button.Name .. ". Error: " .. tostring(connectionsUp))
+        warn("Click aborted: " .. (buttonInstance and buttonInstance.Name or "nil button") .. " is not valid or removed.")
     end
-
-    log("Completed attempt to click the button: " .. button.Name)
 end
 
 
@@ -303,12 +263,8 @@ end
 
 -- Handles clicking of hotbar abilities (Drop and Sword, now uses global log)
 local function handleHotbarAbilities()
-    if not hotbarSpamActive then -- Check the new toggle state
-        log("Hotbar abilities spam is OFF.")
-        return
-    end
     if not scoreIncreasingActionsAllowed then
-        log("Hotbar abilities paused due to score control.")
+        log("Hotbar abilities paused due0to score control.")
         return
     end
 
@@ -377,39 +333,9 @@ local function findPetsContainer()
     return nil
 end
 
--- Finds Kelp Raider Ships (now uses global log)
-local function findKelpRaiderShips()
-    local ships = {}
-    local interior = findCoconutBonkInterior()
-    if not interior then return ships end
-    local gameFolder = interior:FindFirstChild("Game")
-    if not gameFolder then return ships end
-    local binsFolder = gameFolder:FindFirstChild("Bins")
-    if not binsFolder then return ships end
-    local boatsFolder = binsFolder:FindFirstChild("Boats")
-    if not boatsFolder then
-        logFinding("boats_folder", "Game.Bins.Boats", false)
-        return ships
-    end
-    logFinding("boats_folder", "Game.Bins.Boats", true)
-    for _, obj in ipairs(boatsFolder:GetChildren()) do
-        if obj:IsA("Model") and obj.Name == "Boat" then
-            local rootPart = obj:FindFirstChild("Root")
-            if rootPart and rootPart:IsA("BasePart") then
-                table.insert(ships, rootPart)
-            end
-        end
-    end
-    return ships
-end
-
 -- Handles teleportation to "raider" models (excluding specific keywords, now uses global log)
 local function handleTeleportToModels()
-    if not teleportToRaidersActive then -- Check the new toggle state
-        log("Teleport to Raiders is OFF.")
-        return
-    end
-
+    if not scriptEnabled or not teleportToRaidersActive then return end -- Ensure this feature is enabled
     local petsContainer = findPetsContainer()
     local currentCharacter, hrp = getCharacterAndHRP()
     local bonkInterior = findCoconutBonkInterior()
@@ -427,8 +353,6 @@ local function handleTeleportToModels()
     end
     local goldPos = goldPileRoot.Position
 
-    local threatsFound = false
-    -- Check pets
     for _, model in ipairs(petsContainer:GetChildren()) do
         if model:IsA("Model") then
             local nameLower = model.Name:lower()
@@ -452,143 +376,18 @@ local function handleTeleportToModels()
                             hrp.CFrame = CFrame.lookAt(teleportPos, lookAtPos)
                             task.wait(0.005) -- Small wait after teleport
                         end
-                        threatsFound = true
-                        return -- We teleport to the first detected raider and then return to let the loop continue
+                        -- We teleport to the first detected raider and then return to let the loop continue
+                        -- This ensures we only teleport to one raider per call, then re-evaluate.
+                        return
                     end
                 end
             end
         end
     end
-
-    -- Check Kelp Raider Ships if active
-    if detectKelpRaiderShipsActive then
-        local ships = findKelpRaiderShips()
-        for _, shipPart in ipairs(ships) do
-            local dist = (shipPart.Position - goldPos).magnitude
-            if dist <= GOLD_PILE_GUARD_RADIUS then
-                log("Threat: Kelp Raider Ship within guard radius (" .. math.floor(dist) .. " studs). Teleporting.")
-                local teleportPos = shipPart.Position + Vector3.new(0, 5, 0)
-                if hrp and hrp.Parent == currentCharacter then
-                    hrp.CFrame = CFrame.lookAt(teleportPos, shipPart.Position)
-                    task.wait(0.005)
-                end
-                threatsFound = true
-                return
-            end
-        end
-    end
-
-    if not threatsFound then
-        local currentTime = tick()
-        if currentTime - lastNoThreatLogTime >= LOG_FINDING_COOLDOWN then
-            log("No threats found within guard radius.")
-            lastNoThreatLogTime = currentTime
-        end
-    end
+    log("No raiders found within guard radius.")
 end
 
-local function aimAtNearestThreat()
-    local currentChar, hrp = getCharacterAndHRP()
-    if not hrp or not hrp.Parent then return end
-
-    local targetPart = nil
-    local closestDist = math.huge
-
-    local bonkInterior = findCoconutBonkInterior()
-    if not bonkInterior then return end
-    local gameFolder = bonkInterior:FindFirstChild("Game")
-    local goldPileRoot = gameFolder and gameFolder:FindFirstChild("GoldPile") and gameFolder.GoldPile:FindFirstChild("Root")
-    if not (goldPileRoot and goldPileRoot:IsA("BasePart")) then return end
-    local goldPos = goldPileRoot.Position
-
-    -- Check ships
-    if detectKelpRaiderShipsActive then
-        local ships = findKelpRaiderShips()
-        for _, shipPart in ipairs(ships) do
-            if (shipPart.Position - goldPos).magnitude <= GOLD_PILE_GUARD_RADIUS then
-                local distToPlayer = (shipPart.Position - hrp.Position).magnitude
-                if distToPlayer < closestDist then
-                    closestDist = distToPlayer
-                    targetPart = shipPart
-                end
-            end
-        end
-    end
-
-    -- Check pets
-    local pets = findPetsContainer()
-    if pets then
-        for _, model in ipairs(pets:GetChildren()) do
-            if model:IsA("Model") then
-                local nameLower = model.Name:lower()
-                local shouldExclude = false
-                for _, keyword in ipairs(EXCLUDED_MODEL_KEYWORDS) do
-                    if nameLower:find(keyword) then
-                        shouldExclude = true
-                        break
-                    end
-                end
-                if not shouldExclude then
-                    local raiderHRP = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
-                    if raiderHRP and raiderHRP:IsA("BasePart") then
-                        local distToGold = (raiderHRP.Position - goldPos).magnitude
-                        if distToGold <= GOLD_PILE_GUARD_RADIUS then
-                            local distToPlayer = (raiderHRP.Position - hrp.Position).magnitude
-                            if distToPlayer < closestDist then
-                                closestDist = distToPlayer
-                                targetPart = raiderHRP
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    if targetPart then
-        log("Aiming at threat: " .. targetPart.Parent.Name)
-        local aimStartTime = tick()
-        local MAX_AIM_DURATION = 3 -- Aim for a maximum of 3 seconds per call to prevent blocking other phases too long
-
-        while scriptEnabled and isMinigameActive() and targetPart.Parent and (tick() - aimStartTime < MAX_AIM_DURATION) do
-            local success, err = pcall(function()
-                hrp.CFrame = CFrame.lookAt(hrp.Position, targetPart.Position)
-            end)
-            if not success then warn("Failed to aim: " .. tostring(err)) break end -- Break if aiming fails
-
-            -- Spam hotbar abilities if enabled
-            if hotbarSpamActive and scoreIncreasingActionsAllowed then
-                local hotbar = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
-                if hotbar and hotbar:IsA("ScreenGui") then
-                    local hotbarFrame = hotbar:FindFirstChild("Hotbar")
-                    if hotbarFrame and hotbarFrame:IsA("Frame") then
-                        local dropBtn = hotbarFrame:FindFirstChild(DROP_BUTTON_NAME)
-                        local swordBtn = hotbarFrame:FindFirstChild(SWORD_BUTTON_NAME)
-
-                        if dropBtn and dropBtn:IsA("GuiButton") and dropBtn.Visible and dropBtn.Active then
-                            clickButton(dropBtn)
-                            task.wait(0.05) -- Smaller wait for faster spam
-                        end
-                        if swordBtn and swordBtn:IsA("GuiButton") and swordBtn.Visible and swordBtn.Active then
-                            clickButton(swordBtn)
-                            task.wait(0.05) -- Smaller wait for faster spam
-                        end
-                    end
-                end
-            end
-            task.wait(0.1) -- Small wait to yield and prevent excessive CPU usage
-        end
-        log("Finished aiming at threat or duration expired.")
-    else
-        -- No threat
-        local currentTime = tick()
-        if currentTime - lastNoThreatLogTime >= LOG_FINDING_COOLDOWN then
-            log("No threat to aim at.")
-            lastNoThreatLogTime = currentTime
-        end
-    end
-end
-
+-- Checks the current score and adjusts `scoreIncreasingActionsAllowed` (now uses global log)
 local function checkScoreAndAdjustActions()
     local success, valueLabel = pcall(function()
         return playerGui:WaitForChild("MinigameInGameApp", 5)
@@ -625,279 +424,7 @@ local function checkScoreAndAdjustActions()
     log("Current Score: " .. currentScore)
 end
 
-local function teleportAndClickPile(pileNumber)
-    local currentChar, hrp = getCharacterAndHRP()
-    if not hrp or not hrp.Parent then return false end
-
-    local interior = findCoconutBonkInterior()
-    if not interior then log("Cannot find interior for piles"); return false end
-    local gameFolder = interior:FindFirstChild("Game")
-    if not gameFolder then log("Game folder missing for piles."); return false end
-    local droppables = gameFolder:FindFirstChild("Droppables")
-    if not droppables then
-        local childrenNames = {}
-        for _, child in ipairs(gameFolder:GetChildren()) do
-            table.insert(childrenNames, child.Name .. " (" .. child.ClassName .. ")")
-        end
-        log("Droppables folder missing. Children of Game folder: " .. table.concat(childrenNames, ", "));
-        return false
-    end
-
-    -- Navigate into the 'Piles' folder
-    local pilesFolder = droppables:FindFirstChild("Piles")
-    if not pilesFolder then
-        local childrenNames = {}
-        for _, child in ipairs(droppables:GetChildren()) do
-            table.insert(childrenNames, child.Name .. " (" .. child.ClassName .. ")")
-        end
-        log("Piles folder missing inside Droppables. Children of Droppables: " .. table.concat(childrenNames, ", "));
-        return false
-    end
-    logFinding("piles_folder", "Piles folder", true)
-
-    local pile
-    local pileName = tostring(pileNumber) -- Piles are named "1", "2" not "Pile1", "Pile2"
-    pile = pilesFolder:FindFirstChild(pileName)
-
-    if not pile or not pile:IsA("Model") then
-        local childrenNames = {}
-        for _, child in ipairs(pilesFolder:GetChildren()) do
-            table.insert(childrenNames, child.Name .. " (" .. child.ClassName .. ")")
-        end
-        log("Pile " .. pileNumber .. " not found. Children of Piles folder: " .. table.concat(childrenNames, ", "))
-        return false
-    end
-    logFinding("pile" .. pileNumber, "Pile " .. pileNumber, true)
-
-    local targetPart = pile.PrimaryPart or pile:FindFirstChild("Root") or pile:FindFirstChild("Hitbox")
-    if not targetPart or not targetPart:IsA("BasePart") then
-        targetPart = pile -- Fallback to the model itself if it's a BasePart
-        if not targetPart or not targetPart:IsA("BasePart") then
-            log("Target part not found for pile " .. pileNumber .. ". Model type: " .. pile.ClassName)
-            return false
-        end
-    end
-
-    local teleportPos = targetPart.Position + Vector3.new(0, 5, 0)
-    if hrp and hrp.Parent then
-        hrp.CFrame = CFrame.lookAt(teleportPos, targetPart.Position)
-        log("Teleported to Pile " .. pileNumber)
-        task.wait(0.2)
-    end
-
-    -- Click tap buttons near pile
-    local hotbar = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
-    if hotbar and hotbar:IsA("ScreenGui") then
-        local tapBtns = {}
-        for _, obj in ipairs(hotbar:GetDescendants()) do
-            if obj:IsA("GuiButton") and obj.Name:lower():find("tapbutton") and obj.Visible and obj.Active then
-                table.insert(tapBtns, obj)
-            end
-        end
-        for _, btn in ipairs(tapBtns) do
-            if scoreIncreasingActionsAllowed then
-                clickButton(btn)
-                task.wait(0.1)
-            else
-                log("Skipping tap button due to high score.")
-            end
-        end
-    end
-    return true
-end
-
-local function teleportToSpecificTurret(turretNumber)
-    local currentChar, hrp = getCharacterAndHRP()
-    if not hrp or not hrp.Parent then return false end
-    local interior = findCoconutBonkInterior()
-    if not interior then log("Cannot find interior for turrets"); return false end
-    local visualFolder = interior:FindFirstChild("Visual")
-    if not visualFolder then log("Visual folder missing for turrets."); return false end
-
-    local children = visualFolder:GetChildren()
-    local turretsContainer
-    if #children >= TURRET_PARENT_CONTAINER_INDEX then
-        turretsContainer = children[TURRET_PARENT_CONTAINER_INDEX]
-    end
-    if not turretsContainer or not (turretsContainer:IsA("Model") or turretsContainer:IsA("Folder")) then
-        local childrenNames = {}
-        for _, child in ipairs(visualFolder:GetChildren()) do
-            table.insert(childrenNames, child.Name .. " (" .. child.ClassName .. ")")
-        end
-        log("Turrets container not found at index " .. TURRET_PARENT_CONTAINER_INDEX .. ". Children of Visual folder: " .. table.concat(childrenNames, ", "))
-        return false
-    end
-    logFinding("turrets_container", "Turrets Container", true)
-
-    local targetPart
-    if turretNumber == 1 then
-        -- Turret 1 is found by name directly under turretsContainer
-        targetPart = turretsContainer:FindFirstChild(TURRET_1_NAME, true)
-    elseif turretNumber == 2 then
-        -- Navigate into the 'Turrets' folder inside the container
-        local turretsSubFolder = turretsContainer:FindFirstChild("Turrets")
-        if not turretsSubFolder then
-            local childrenNames = {}
-            for _, child in ipairs(turretsContainer:GetChildren()) do
-                table.insert(childrenNames, child.Name .. " (" .. child.ClassName .. ")")
-            end
-            log("Turrets sub-folder not found inside Turrets Container. Children of Turrets Container: " .. table.concat(childrenNames, ", "));
-            return false
-        end
-        logFinding("turrets_sub_folder", "Turrets sub-folder", true)
-
-        if #turretsSubFolder:GetChildren() >= TURRET_2_INDEX then
-            local potential = turretsSubFolder:GetChildren()[TURRET_2_INDEX]
-            if potential then
-                if potential:IsA("Model") then
-                    targetPart = potential.PrimaryPart or potential:FindFirstChild("Hitbox") or potential:FindFirstChild("Root") or potential
-                elseif potential:IsA("BasePart") then
-                    targetPart = potential
-                end
-            end
-        end
-    end
-    if not targetPart or not targetPart:IsA("BasePart") then
-        local childrenNames = {}
-        if turretsContainer then
-            for _, child in ipairs(turretsContainer:GetChildren()) do
-                table.insert(childrenNames, child.Name .. " (" .. child.ClassName .. ")")
-            end
-        end
-        log("Turret " .. turretNumber .. " not found. Children of Turrets Container (or its sub-folder): " .. table.concat(childrenNames, ", "))
-        return false
-    end
-    local teleportPos = targetPart.Position + Vector3.new(0, 5, 0)
-    if hrp and hrp.Parent then
-        hrp.CFrame = CFrame.lookAt(teleportPos, targetPart.Position)
-        log("Teleported to Turret " .. turretNumber)
-        task.wait(0.2)
-    end
-
-    -- Click tap buttons near turret
-    local hotbar = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
-    if hotbar and hotbar:IsA("ScreenGui") then
-        local tapBtns = {}
-        for _, obj in ipairs(hotbar:GetDescendants()) do
-            if obj:IsA("GuiButton") and obj.Name:lower():find("tapbutton") and obj.Visible and obj.Active then
-                table.insert(tapBtns, obj)
-            end
-        end
-        for _, btn in ipairs(tapBtns) do
-            if scoreIncreasingActionsAllowed then
-                clickButton(btn)
-                task.wait(0.1)
-            else
-                log("Skipping tap button due to high score.")
-            end
-        end
-    end
-    return true
-end
-
-local function findAllTapButtons()
-    local tapButtons = {}
-    local hotbar = playerGui:FindFirstChild(FROSTCLAWS_HOTBAR_APP_NAME)
-    if hotbar and hotbar:IsA("ScreenGui") then
-        for _, obj in ipairs(hotbar:GetDescendants()) do
-            if obj:IsA("GuiButton") and obj.Name:lower():find("tapbutton") and obj.Visible and obj.Active then
-                table.insert(tapButtons, obj)
-            end
-        end
-    end
-    if #tapButtons > 0 then
-        logFinding("tap_buttons", "Tap Buttons", true)
-        for _, btn in ipairs(tapButtons) do
-            if scoreIncreasingActionsAllowed then
-                clickButton(btn)
-                task.wait(0.1)
-            else
-                log("Skipping Tap Button due to high score.")
-            end
-        end
-    else
-        logFinding("tap_buttons", "Tap Buttons", false)
-    end
-end
-
-local function clickStartButton()
-    if hasClickedStartButton then
-        log("Start button already clicked in this round.")
-        return
-    end
-    log("Attempting to find and click Minigame Start Button...")
-    local success, startBtn = pcall(function()
-        return playerGui:WaitForChild("MinigameReadyApp", 2)
-            :FindFirstChild("Body", true)
-            :FindFirstChild("Bottom", true)
-            :FindFirstChild("Action", true)
-            :FindFirstChild("Button", true)
-    end)
-    if success and startBtn and startBtn:IsA("GuiButton") and startBtn.Visible and startBtn.Active then
-        logFinding("start_button", "Minigame Start Button", true)
-        clickButton(startBtn)
-        hasClickedStartButton = true
-        log("Clicked Minigame Start Button.")
-    else
-        local reason = "Unknown"
-        if not success then
-            reason = "pcall failed: " .. tostring(startBtn)
-        elseif not startBtn then
-            reason = "Button object not found."
-            local minigameReadyApp = playerGui:FindFirstChild("MinigameReadyApp")
-            if minigameReadyApp then
-                local body = minigameReadyApp:FindFirstChild("Body", true)
-                if body then
-                    local bottom = body:FindFirstChild("Bottom", true)
-                    if bottom then
-                        local action = bottom:FindFirstChild("Action", true)
-                        if action then
-                            local childrenNames = {}
-                            for _, child in ipairs(action:GetChildren()) do
-                                table.insert(childrenNames, child.Name .. " (" .. child.ClassName .. ")")
-                            end
-                            log("Children of MinigameReadyApp.Body.Bottom.Action: " .. table.concat(childrenNames, ", "))
-                        else
-                            log("MinigameReadyApp.Body.Bottom.Action not found.")
-                        end
-                    else
-                        log("MinigameReadyApp.Body.Bottom not found.")
-                    end
-                else
-                    log("MinigameReadyApp.Body not found.")
-                end
-            else
-                log("MinigameReadyApp not found.")
-            end
-        elseif not startBtn.Visible then
-            reason = "Button not visible."
-        elseif not startBtn.Active then
-            reason = "Button not active."
-        end
-        logFinding("start_button", "Minigame Start Button", false, {Reason = reason})
-    end
-end
-
-
-local function destroyChoiceSelects()
-    local choiceGui = playerGui:FindFirstChild("ChoiceSelectApp")
-    if choiceGui and choiceGui:IsA("ScreenGui") and choiceGui.Enabled then
-        log("ChoiceSelectApp found, destroying.")
-        choiceGui:Destroy()
-    end
-end
-
-local function antiAFKMovement()
-    local currentChar, hrp = getCharacterAndHRP()
-    if not hrp or not hrp.Parent then return end
-    if RunService:IsStudio() then return end
-    hrp.CFrame = hrp.CFrame * CFrame.new(0.1, 0, 0.1)
-    task.wait(0.1)
-    hrp.CFrame = hrp.CFrame * CFrame.new(-0.1, 0, -0.1)
-    log("Anti-AFK movement performed.")
-end
-
--- Gets the teleport ring instance for initial teleport
+-- Gets the teleport ring instance for initial teleport (now uses global log)
 local function getTeleportRingInstance()
     local ring
     local attempts = 0
@@ -930,7 +457,7 @@ local function getTeleportRingInstance()
     return ring
 end
 
--- Performs an initial teleport to the game's entry point
+-- Performs an initial teleport to the game's entry point (now uses global log)
 local function initialTeleport()
     local currentCharacter, hrp = getCharacterAndHRP()
     local ring = getTeleportRingInstance()
@@ -949,7 +476,7 @@ local function initialTeleport()
     end
 end
 
--- Explicit "finding minigame" logic as requested (for the main minigame)
+-- Explicit "finding minigame" logic as requested (for the main minigame, now uses global log)
 local isFindingMinigame = false
 local function startFindingMinigame()
     if isFindingMinigame then return end
@@ -976,7 +503,30 @@ local function stopFindingMinigame()
     end
 end
 
--- Function to handle auto click hotbar logic
+-- Function to handle auto close reward logic (now uses global log)
+local function handleAutoCloseReward()
+    if not autoCloseRewardActive then return end
+
+    local rewardApp = playerGui:FindFirstChild("MinigameRewardsApp")
+    if rewardApp and rewardApp.Enabled then
+        local body = rewardApp:FindFirstChild("Body")
+        if body then
+            local closeButton = body:FindFirstChild("Button") -- Assuming the button is directly named "Button"
+            if closeButton and closeButton:IsA("GuiButton") and closeButton.Visible and closeButton.Active then
+                log("Attempting to auto-close reward app.")
+                fireSpecificClickEvents(closeButton)
+            else
+                log("Reward close button not found or not active.")
+            end
+        else
+            log("MinigameRewardsApp Body not found.")
+        end
+    else
+        -- log("MinigameRewardsApp not found or not enabled.") -- Too chatty if constantly checking
+    end
+end
+
+-- Function to handle auto click hotbar logic (now uses global log)
 local function handleAutoClickHotbar()
     if autoClickHotbarActive then
         log("Executing Auto Click Hotbar script...")
@@ -991,110 +541,143 @@ local function handleAutoClickHotbar()
         -- Since loadstring typically runs once to inject a script, we immediately turn off the toggle
         -- to prevent re-execution on every loop iteration. The external script manages its own state.
         autoClickHotbarActive = false
-        -- Update the Fluent UI button to reflect this
-        if autoClickHotbarFluentBtn then -- Make sure the button reference exists
-            autoClickHotbarFluentBtn:SetTitle("Auto Click Hotbar: OFF")
-            autoClickHotbarFluentBtn:SetValue(false) -- Set Fluent Toggle value to false
+        -- Update the button UI to reflect this
+        local footer = frame:FindFirstChild("Footer")
+        if footer then
+            local autoClickHotbarBtn = footer:FindFirstChild("AutoClickHotbarBtn")
+            if autoClickHotbarBtn then
+                autoClickHotbarBtn.Text = "Auto Click Hotbar: OFF"
+                autoClickHotbarBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
+            end
         end
     end
 end
 
--- New/Modified function to handle rewards auto-clicking, including ChoiceSelects and TapButtons
-local function handleRewardsAutoClick()
-    if not rewardsAutoClickActive then
-        log("handleRewardsAutoClick: Toggle is OFF.")
-        return
+-- Custom Draggable function
+local function makeDraggable(guiElement, targetFrame)
+    local dragging = false
+    local dragStart = Vector2.new(0, 0)
+    local initialPosition = UDim2.new(0, 0, 0, 0)
+
+    guiElement.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            initialPosition = targetFrame.Position
+            -- input.Handled = true -- REMOVED: Deprecated and causes error
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and dragging then
+            local delta = input.Position - dragStart
+            targetFrame.Position = UDim2.new(initialPosition.X.Scale, initialPosition.X.Offset + delta.X,
+                                            initialPosition.Y.Scale, initialPosition.Y.Offset + delta.Y)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            dragging = false
+        end
+    end)
+end
+
+-- NEW: Function to update the visibility and color of the toggle (from AdoptMe/Sumar UI Toggle)
+local function updateAdoptMeToggleState()
+    if isAdoptMeActive then
+        adoptMeText.Visible = true
+        sumarText.Visible = false
+        toggleFrame.BackgroundColor3 = ADOPTME_COLOR
+        -- Turn OFF MainConsole UI by setting Enabled to false
+        if mainConsoleGui then mainConsoleGui.Enabled = false end
+        log("MainConsole UI turned OFF (ADOPTME mode).")
+    else
+        adoptMeText.Visible = false
+        sumarText.Visible = true
+        toggleFrame.BackgroundColor3 = SUMAR_COLOR
+        -- Turn ON MainConsole UI by setting Enabled to true
+        if mainConsoleGui then mainConsoleGui.Enabled = true end
+        log("MainConsole UI turned ON (SUMAR mode).")
     end
+end
 
-    log("handleRewardsAutoClick: Toggle is ON. Executing logic.")
+-- NEW: Function to handle the toggle click (from AdoptMe/Sumar UI Toggle)
+local function onAdoptMeToggleClicked()
+    isAdoptMeActive = not isAdoptMeActive -- Flip the state
+    updateAdoptMeToggleState() -- Update UI based on new state (including game UI visibility)
+end
 
-    -- Logic for destroying ChoiceSelects frame
-    local interactionsApp = playerGui:FindFirstChild("InteractionsApp", true)
-    if interactionsApp then
-        log("handleRewardsAutoClick: Found InteractionsApp.")
-        local choiceSelectsFrame = interactionsApp:FindFirstChild("ChoiceSelects", true)
-        if choiceSelectsFrame and choiceSelectsFrame.Parent then
-            log("handleRewardsAutoClick: Found ChoiceSelects frame. Destroying.")
-            local success, err = pcall(function() choiceSelectsFrame:Destroy() end)
-            if not success then
-                warn("handleRewardsAutoClick: Error destroying ChoiceSelects frame: " .. tostring(err))
-            end
+-- NEW: Start the bobbing animation (from AdoptMe/Sumar UI Toggle)
+local function startAdoptMeBobbingAnimation()
+    -- Get the current position after setup
+    local initialY = toggleFrame.Position.Y.Scale
+    local initialYOffset = toggleFrame.Position.Y.Offset
+
+    RunService.RenderStepped:Connect(function(deltaTime)
+        -- Calculate the new Y offset using sine wave for smooth bobbing
+        -- Add the bobbing offset to the initial pixel offset
+        local newYOffset = initialYOffset + (math.sin(os.clock() * BOUNCE_SPEED) * BOUNCE_OFFSET_Y)
+        toggleFrame.Position = UDim2.new(toggleFrame.Position.X.Scale, toggleFrame.Position.X.Offset,
+                                         initialY, newYOffset)
+    end)
+end
+
+
+-- --- GUI CREATION ---
+-- This function now creates the single consolidated console UI
+local function createConsoleUI()
+    log("Creating consolidated console UI...")
+    mainConsoleGui = Instance.new("ScreenGui", playerGui) -- Assign to global variable
+    mainConsoleGui.Name = "MainConsole"
+
+    local frame = Instance.new("Frame", mainConsoleGui) -- Parent to mainConsoleGui
+    frame.Size = UDim2.new(0.6, 0, 0.5, 0) -- Adjusted size to be smaller
+    frame.Position = UDim2.new(0.2, 0, 0.25, 0) -- Adjusted position to keep it centered
+    frame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    frame.BorderSizePixel = 2
+    frame.BorderColor3 = Color3.new(1, 1, 1)
+    frame.Active = true -- Main frame active for general interaction
+
+    local header = Instance.new("Frame", frame)
+    header.Size = UDim2.new(1, 0, 0, 50)
+    header.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    header.Active = true -- Make header active to capture mouse events for dragging
+
+    -- Apply custom draggable behavior to the header, making it drag the main frame
+    makeDraggable(header, frame)
+
+
+    -- Main Script Toggle Button (far left)
+    local toggleBtn = Instance.new("TextButton", header)
+    toggleBtn.Size = UDim2.new(0, 120, 1, 0)
+    toggleBtn.Position = UDim2.new(0, 5, 0, 0) -- Positioned to the far left with 5px padding
+    toggleBtn.BackgroundColor3 = Color3.new(0.2, 0.2, 0.8) -- Blue (initial state)
+    toggleBtn.Text = "Script: OFF"
+    toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.FontSize = Enum.FontSize.Size14
+    toggleBtn.TextSize = 18 -- Slightly smaller text
+
+    local function updateToggleUI()
+        if scriptEnabled then
+            toggleBtn.Text = "Script: ON"
+            toggleBtn.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2) -- Green
         else
-            log("handleRewardsAutoClick: ChoiceSelects frame not found or already destroyed.")
-        end
-    else
-        log("handleRewardsAutoClick: InteractionsApp not found.")
-    end
-
-
-    -- Logic for finding and clicking all TapButtons
-    local tapButtons = {}
-    for _, obj in ipairs(playerGui:GetDescendants()) do
-        -- Ensure it's a GuiObject and named "TapButton", visible, and active
-        if obj:IsA("GuiObject") and obj.Name == "TapButton" and obj.Visible and obj.Active then
-            table.insert(tapButtons, obj)
+            toggleBtn.Text = "Script: OFF"
+            toggleBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
         end
     end
+    updateToggleUI() -- Set initial state
 
-    if #tapButtons > 0 then
-        log("handleRewardsAutoClick: Found " .. #tapButtons .. " TapButton(s). Clicking them.")
-        for _, btn in ipairs(tapButtons) do
-            if btn and btn.Parent then -- Double check parent exists before clicking
-                clickButton(btn) -- Using the existing clickButton function for consistency
-                task.wait(0.1) -- Small wait between clicks
-            end
-        end
-    else
-        log("handleRewardsAutoClick: No active TapButton(s) found.")
-    end
-
-    -- Original rewards button logic (if needed, otherwise remove this block)
-    -- This part is commented out as per previous instructions to repurpose the toggle
-    -- local rewardsBtn = playerGui:FindFirstChild(REWARDS_BUTTON_PATH, true)
-    -- if rewardsBtn and rewardsBtn:IsA("GuiButton") and rewardsBtn.Visible and rewardsBtn.Active then
-    --     log("Rewards button found! Clicking.")
-    --     clickButton(rewardsBtn)
-    --     task.wait(0.5)
-    -- end
-end
-
--- NEW: Placeholder function for Cannon Circle automation logic
-local function handleCannonCircle()
-    if not cannonCircleActive then
-        log("handleCannonCircle: Toggle is OFF.")
-        return
-    end
-    log("handleCannonCircle: Toggle is ON. (Implement Cannon Circle logic here)")
-    -- Example: Find and click a "CannonReadyButton" or similar
-    -- local cannonReadyButton = playerGui:FindFirstChild("CannonCircleApp.ReadyButton", true)
-    -- if cannonReadyButton and cannonReadyButton:IsA("GuiButton") and cannonReadyButton.Visible and cannonReadyButton.Active then
-    --     clickButton(cannonReadyButton)
-    --     log("Clicked Cannon Ready Button.")
-    -- end
-    -- Add your specific Cannon Circle automation logic here
-end
-
-
--- --- Fluent UI Elements ---
-do
-    local TreasureDefenceTab = Tabs.TreasureDefence
-    local CannonCircleTab = Tabs.CannonCircle -- Reference the Cannon Circle tab
-
-    -- Script Controls Section (Treasure Defence Tab)
-    local scriptControlsSection = TreasureDefenceTab:AddSection("Script Controls")
-    scriptToggleFluentBtn = scriptControlsSection:AddToggle("AutoScriptToggle", {
-        Title = "Script: OFF",
-        Description = "Enable or disable the main script functionality.",
-        Default = false,
-    })
-
-    scriptToggleFluentBtn:OnChanged(function(state)
-        scriptEnabled = state
-        scriptToggleFluentBtn:SetTitle("Script: " .. (state and "ON" or "OFF"))
-        
+    -- Connect main script toggle button
+    toggleBtn.MouseButton1Click:Connect(function()
+        local prevState = scriptEnabled
+        scriptEnabled = not scriptEnabled
+        updateToggleUI()
         log("Script toggled: " .. tostring(scriptEnabled))
 
-        if scriptEnabled then
+        if scriptEnabled and not prevState then
             -- Actions to take when script is enabled
             local currentCharacter, hrp = getCharacterAndHRP()
             local ring = getTeleportRingInstance()
@@ -1118,124 +701,145 @@ do
             log("All main script features deactivated.")
         end
     end)
-    -- Ensure initial state is reflected
-    scriptToggleFluentBtn:SetTitle("Script: " .. (scriptEnabled and "ON" or "OFF"))
-    scriptToggleFluentBtn:SetValue(scriptEnabled)
 
+    -- New: Boat Teleportation Button (Coming Soon)
+    local boatTeleportBtn = Instance.new("TextButton", header)
+    -- Set a fixed size that should accommodate the text
+    boatTeleportBtn.Size = UDim2.new(0, 200, 1, 0) -- Adjusted width to fit "Boat Teleportation (Coming soon)"
+    boatTeleportBtn.Position = UDim2.new(0, toggleBtn.Position.X.Offset + toggleBtn.Size.X.Offset + 10, 0, 0)
+    boatTeleportBtn.BackgroundColor3 = Color3.new(0.5, 0.5, 0.5) -- Grayed out color
+    boatTeleportBtn.Text = "Boat Teleportation (Coming soon)"
+    boatTeleportBtn.TextColor3 = Color3.new(1, 1, 1) -- White text for contrast
+    boatTeleportBtn.Font = Enum.Font.GothamBold
+    boatTeleportBtn.FontSize = Enum.FontSize.Size14
+    boatTeleportBtn.TextSize = 18 -- Keep text size to 18
+    boatTeleportBtn.TextWrapped = true -- Allow text to wrap if it's still too long
+    -- Set TextScaled to true to automatically scale down text if it still overflows
+    boatTeleportBtn.TextScaled = true
 
-    -- Feature Toggles Section (Treasure Defence Tab)
-    local featureTogglesSection = TreasureDefenceTab:AddSection("Feature Toggles")
-
-    hotbarSpamFluentBtn = featureTogglesSection:AddToggle("HotbarSpamToggle", {
-        Title = "Hotbar Spam: ON",
-        Description = "Enables or disables spamming of hotbar abilities (Drop/Sword).",
-        Default = hotbarSpamActive,
-    })
-    hotbarSpamFluentBtn:OnChanged(function(state)
-        hotbarSpamActive = state
-        hotbarSpamFluentBtn:SetTitle("Hotbar Spam: " .. (state and "ON" or "OFF"))
-        log("Hotbar Spam: " .. (state and "ON" or "OFF"))
+    -- Connect boat teleportation button to a "Coming soon" message
+    boatTeleportBtn.MouseButton1Click:Connect(function()
+        log("Boat Teleportation feature is coming soon!")
     end)
-    hotbarSpamFluentBtn:SetTitle("Hotbar Spam: " .. (hotbarSpamActive and "ON" or "OFF"))
-    hotbarSpamFluentBtn:SetValue(hotbarSpamActive)
 
+    -- Close Button (restored to v38 properties)
+    local closeBtn = Instance.new("TextButton", header)
+    closeBtn.Size = UDim2.new(0, 100, 1, 0)
+    closeBtn.Position = UDim2.new(1, -100, 0, 0)
+    closeBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
+    closeBtn.Text = "X"
+    closeBtn.TextColor3 = Color3.new(1, 1, 1)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.FontSize = Enum.FontSize.Size14
+    closeBtn.TextSize = 24
 
-    teleportToRaidersFluentBtn = featureTogglesSection:AddToggle("TeleportToRaidersToggle", {
-        Title = "Teleport to Raiders: ON",
-        Description = "Enables or disables teleportation to nearby raiders.",
-        Default = teleportToRaidersActive,
-    })
-    teleportToRaidersFluentBtn:OnChanged(function(state)
-        teleportToRaidersActive = state
-        teleportToRaidersFluentBtn:SetTitle("Teleport to Raiders: " .. (state and "ON" or "OFF"))
-        log("Teleport to Raiders: " .. (state and "ON" or "OFF"))
+    -- Connect close button
+    closeBtn.MouseButton1Click:Connect(function()
+        mainConsoleGui:Destroy() -- Destroy the main console GUI
+        consoleTextLabel = nil -- Clear reference
+        scriptEnabled = false -- Ensure main script is disabled on close
+        log("Main Console closed. All scripts disabled.")
+        scoreIncreasingActionsAllowed = true -- Reset score control on disable
+        stopFindingMinigame() -- Stop the "finding minigame" loop
     end)
-    teleportToRaidersFluentBtn:SetTitle("Teleport to Raiders: " .. (teleportToRaidersActive and "ON" or "OFF"))
-    teleportToRaidersFluentBtn:SetValue(teleportToRaidersActive)
 
+    -- Title Label (positioned to be centered in the header, with new text)
+    local titleLabel = Instance.new("TextLabel", header)
+    titleLabel.Size = UDim2.new(1, 0, 1, 0) -- Span full width of header
+    titleLabel.Position = UDim2.new(0, 0, 0, 0) -- Top-left of header
+    titleLabel.BackgroundTransparency = 1 -- Keep background transparent
+    titleLabel.TextColor3 = Color3.new(1, 1, 1)
+    titleLabel.Text = "SummerFest 2025 Week 1" -- Renamed title
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.FontSize = Enum.FontSize.Size18
+    titleLabel.TextSize = 22
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Center -- Center text horizontally
+    titleLabel.TextYAlignment = Enum.TextYAlignment.Center -- Center text vertically
+    titleLabel.TextScaled = true -- Crucial: Scale text to fit within the label bounds
 
-    rewardsAutoClickFluentBtn = featureTogglesSection:AddToggle("RewardsAutoClickToggle", {
-        Title = "Auto Click Rewards: OFF",
-        Description = "Automatically handles reward choices and clicks TapButtons.",
-        Default = rewardsAutoClickActive,
-    })
-    rewardsAutoClickFluentBtn:OnChanged(function(state)
-        rewardsAutoClickActive = state
-        rewardsAutoClickFluentBtn:SetTitle("Auto Click Rewards: " .. (state and "ON" or "OFF"))
-        log("Auto Click Rewards: " .. (state and "ON" or "OFF"))
-    end)
-    rewardsAutoClickFluentBtn:SetTitle("Auto Click Rewards: " .. (rewardsAutoClickActive and "ON" or "OFF"))
-    rewardsAutoClickFluentBtn:SetValue(rewardsAutoClickActive)
+    -- NEW: Content Area Frame to hold both Console Log and Changelog
+    local contentArea = Instance.new("Frame", frame)
+    contentArea.Name = "ContentArea"
+    contentArea.Size = UDim2.new(1, -10, 1, -100) -- Accounts for header (50) and footer (50) + 10px total padding
+    contentArea.Position = UDim2.new(0, 5, 0, 55) -- Below header, 5px padding left/top
+    contentArea.BackgroundTransparency = 1 -- Make it transparent
+    contentArea.BorderSizePixel = 0
 
+    -- Add UIListLayout to arrange Console Log and Changelog horizontally
+    local contentLayout = Instance.new("UIListLayout", contentArea)
+    contentLayout.FillDirection = Enum.FillDirection.Horizontal
+    contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    contentLayout.Padding = UDim.new(0, 10) -- 10 pixels padding between the two sections
 
-    autoClickHotbarFluentBtn = featureTogglesSection:AddToggle("AutoClickHotbarToggle", {
-        Title = "Auto Click Hotbar: OFF",
-        Description = "Loads and enables an external auto-clicker for hotbar items.",
-        Default = autoClickHotbarActive,
-    })
-    autoClickHotbarFluentBtn:OnChanged(function(state)
-        local prevState = autoClickHotbarActive
-        autoClickHotbarActive = state
-        autoClickHotbarFluentBtn:SetTitle("Auto Click Hotbar: " .. (state and "ON" or "OFF"))
-        if autoClickHotbarActive then
-            log("Auto Click Hotbar: ON (Executing script...)")
-            handleAutoClickHotbar() -- This function now knows about autoClickHotbarFluentBtn
-        else
-            log("Auto Click Hotbar: OFF (Note: External script may continue to run if already loaded.)")
-        end
-    end)
-    autoClickHotbarFluentBtn:SetTitle("Auto Click Hotbar: " .. (autoClickHotbarActive and "ON" or "OFF"))
-    autoClickHotbarFluentBtn:SetValue(autoClickHotbarActive)
+    -- Log area (with ScrollingFrame) - now child of contentArea
+    local logFrame = Instance.new("Frame", contentArea)
+    logFrame.Size = UDim2.new(0.5, -5, 1, 0) -- Half width of contentArea, minus 5px for padding
+    logFrame.Position = UDim2.new(0, 0, 0, 0) -- Position handled by UIListLayout
+    logFrame.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    logFrame.BorderSizePixel = 1
+    logFrame.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    logFrame.Active = false -- Make log frame inactive so it doesn't interfere with dragging
 
+    local textScroller = Instance.new("ScrollingFrame", logFrame)
+    textScroller.Size = UDim2.new(1, 0, 1, 0)
+    textScroller.CanvasSize = UDim2.new(0, 0, 0, 0) -- Will be updated dynamically by AutomaticCanvasSize
+    textScroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    textScroller.BackgroundTransparency = 1
+    textScroller.ScrollBarImageColor3 = Color3.new(0.7, 0.7, 0.7)
+    textScroller.ScrollBarThickness = 8
 
-    detectKelpRaiderShipsFluentBtn = featureTogglesSection:AddToggle("DetectKelpRaiderShipsToggle", {
-        Title = "Detect Kelp Raiders: ON",
-        Description = "Enables detection and targeting of Kelp Raider Ships.",
-        Default = detectKelpRaiderShipsActive,
-    })
-    detectKelpRaiderShipsFluentBtn:OnChanged(function(state)
-        detectKelpRaiderShipsActive = state
-        detectKelpRaiderShipsFluentBtn:SetTitle("Detect Kelp Raiders: " .. (state and "ON" or "OFF"))
-        log("Detect Kelp Raiders: " .. (state and "ON" or "OFF"))
-    end)
-    detectKelpRaiderShipsFluentBtn:SetTitle("Detect Kelp Raiders: " .. (detectKelpRaiderShipsActive and "ON" or "OFF"))
-    detectKelpRaiderShipsFluentBtn:SetValue(detectKelpRaiderShipsActive)
+    local logLabel = Instance.new("TextLabel", textScroller)
+    logLabel.Name = "LogTextLabel"
+    logLabel.Size = UDim2.new(1, 0, 0, 0) -- Height will adjust with AutomaticCanvasSize
+    logLabel.Position = UDim2.new(0, 0, 0, 0)
+    logLabel.BackgroundTransparency = 1
+    logLabel.TextColor3 = Color3.new(1, 1, 1)
+    logLabel.TextXAlignment = Enum.TextXAlignment.Left
+    logLabel.TextYAlignment = Enum.TextYAlignment.Top
+    logLabel.TextWrapped = true
+    logLabel.Font = Enum.Font.Code
+    logLabel.FontSize = Enum.FontSize.Size14
+    logLabel.Text = "Console Log:\n"
+    logLabel.AutomaticSize = Enum.AutomaticSize.Y -- Make label height adjust to content
+    consoleTextLabel = logLabel -- Assign to global variable
 
+    log("Console UI created.")
+    -- Add the script version to the console log immediately after creation
+    log("Script Version: 2025-07-07_ConsolidatedUIAndLogic_v70") -- Updated version number
 
-    -- NEW: Cannon Circle Controls Section
-    local cannonCircleControlsSection = CannonCircleTab:AddSection("Game Controls")
-    cannonCircleFluentBtn = cannonCircleControlsSection:AddToggle("CannonCircleToggle", {
-        Title = "Cannon Circle: OFF",
-        Description = "Enables or disables automation for the Cannon Circle minigame.",
-        Default = cannonCircleActive,
-    })
-    cannonCircleFluentBtn:OnChanged(function(state)
-        cannonCircleActive = state
-        cannonCircleFluentBtn:SetTitle("Cannon Circle: " .. (state and "ON" or "OFF"))
-        log("Cannon Circle Automation: " .. (state and "ON" or "OFF"))
-    end)
-    cannonCircleFluentBtn:SetTitle("Cannon Circle: " .. (cannonCircleActive and "ON" or "OFF"))
-    cannonCircleFluentBtn:SetValue(cannonCircleActive)
+    -- NEW: Changelog Frame
+    local changelogFrame = Instance.new("Frame", contentArea)
+    changelogFrame.Name = "ChangelogFrame"
+    changelogFrame.Size = UDim2.new(0.5, -5, 1, 0) -- Half width of contentArea, minus 5px for padding
+    changelogFrame.Position = UDim2.new(0, 0, 0, 0) -- Position handled by UIListLayout
+    changelogFrame.BackgroundColor3 = Color3.new(0.15, 0.15, 0.15)
+    changelogFrame.BorderSizePixel = 1
+    changelogFrame.BorderColor3 = Color3.new(0.5, 0.5, 0.5)
+    changelogFrame.Active = false
 
+    local changelogScroller = Instance.new("ScrollingFrame", changelogFrame)
+    changelogScroller.Size = UDim2.new(1, 0, 1, 0)
+    changelogScroller.CanvasSize = UDim2.new(0, 0, 0, 0)
+    changelogScroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    changelogScroller.BackgroundTransparency = 1
+    changelogScroller.ScrollBarImageColor3 = Color3.new(0.7, 0.7, 0.7)
+    changelogScroller.ScrollBarThickness = 8
 
-    -- Console Log Section
-    local consoleLogSection = TreasureDefenceTab:AddSection("Console Log")
-    -- The initial content can be set here. The 'log' function will append to it via 'internalLogLines'
-    consoleOutputElement = consoleLogSection:AddParagraph({
-        Title = "LogOutput", -- The title for the paragraph element
-        Content = "Console Log:\nScript Version: 2025-07-07_ConsolidatedUIAndLogic_v70" -- Initial content
-    })
-    -- Debug print for consoleOutputElement itself
-    print("Type of consoleOutputElement after creation: " .. typeof(consoleOutputElement))
-    print("Type of consoleOutputElement.SetContent: " .. typeof(consoleOutputElement and consoleOutputElement.SetContent))
+    local changelogLabel = Instance.new("TextLabel", changelogScroller)
+    changelogLabel.Name = "ChangelogTextLabel"
+    changelogLabel.Size = UDim2.new(1, 0, 0, 0)
+    changelogLabel.Position = UDim2.new(0, 0, 0, 0)
+    changelogLabel.BackgroundTransparency = 1
+    changelogLabel.TextColor3 = Color3.new(1, 1, 1)
+    changelogLabel.TextXAlignment = Enum.TextXAlignment.Left
+    changelogLabel.TextYAlignment = Enum.TextYAlignment.Top
+    changelogLabel.TextWrapped = true
+    changelogLabel.Font = Enum.Font.Code
+    changelogLabel.FontSize = Enum.FontSize.Size14
+    changelogLabel.AutomaticSize = Enum.AutomaticSize.Y
 
-    -- Initialize internalLogLines with the initial content
-    internalLogLines = string.split("Console Log:\nScript Version: 2025-07-07_ConsolidatedUIAndLogic_v70", "\n")
-
-
-    -- Changelog Section
-    local changelogSection = TreasureDefenceTab:AddSection("Changelog")
-    local changelogContent = [[
+    -- Changelog Content
+    changelogLabel.Text = [[
 Changelog:
 v70 (2025-07-07):
 - Fixed AdoptMe/Sumar toggle disappearing by making it a separate ScreenGui.
@@ -1288,11 +892,140 @@ v57 (2025-07-07):
 v56 (2025-07-07):
 - Fixed draggable UI getting stuck after release (removed `input.Handled = true`).
 - Initial implementation of consolidated UI framework.
-    ]]
-    changelogSection:AddParagraph({
-        Title = "Changelog",
-        Content = changelogContent
-    })
+]]
+
+    -- NEW: Footer Frame for new buttons
+    local footer = Instance.new("Frame", frame)
+    footer.Name = "Footer"
+    footer.Size = UDim2.new(1, 0, 0, 50) -- Height for buttons
+    footer.Position = UDim2.new(0, 0, 1, -50) -- Position at the bottom of the main frame
+    footer.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    footer.BorderSizePixel = 0
+
+    -- Add UIListLayout to the footer for automatic alignment
+    local listLayout = Instance.new("UIListLayout", footer)
+    listLayout.FillDirection = Enum.FillDirection.Horizontal
+    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    listLayout.Padding = UDim.new(0, 10) -- 10 pixels padding between buttons
+
+    -- NEW: Auto Close Reward Toggle Button
+    local autoCloseRewardToggleBtn = Instance.new("TextButton", footer)
+    autoCloseRewardToggleBtn.Name = "AutoCloseRewardToggleBtn"
+    autoCloseRewardToggleBtn.Size = UDim2.new(0, 180, 1, 0) -- Fixed size, layout handles position
+    autoCloseRewardToggleBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red (initial OFF state)
+    autoCloseRewardToggleBtn.Text = "Auto Close Reward: OFF"
+    autoCloseRewardToggleBtn.TextColor3 = Color3.new(1, 1, 1)
+    autoCloseRewardToggleBtn.Font = Enum.Font.GothamBold
+    autoCloseRewardToggleBtn.FontSize = Enum.FontSize.Size14
+    autoCloseRewardToggleBtn.TextSize = 18
+    autoCloseRewardToggleBtn.TextScaled = true -- Ensure text fits
+
+    autoCloseRewardToggleBtn.MouseButton1Click:Connect(function()
+        autoCloseRewardActive = not autoCloseRewardActive
+        if autoCloseRewardActive then
+            autoCloseRewardToggleBtn.Text = "Auto Close Reward: ON"
+            autoCloseRewardToggleBtn.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2) -- Green
+            log("Auto Close Reward: ON")
+        else
+            autoCloseRewardToggleBtn.Text = "Auto Close Reward: OFF"
+            autoCloseRewardToggleBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
+            log("Auto Close Reward: OFF")
+        end
+    end)
+
+    -- NEW: Auto Click Hotbar Button
+    local autoClickHotbarBtn = Instance.new("TextButton", footer)
+    autoClickHotbarBtn.Name = "AutoClickHotbarBtn"
+    autoClickHotbarBtn.Size = UDim2.new(0, 180, 1, 0) -- Fixed size, layout handles position
+    autoClickHotbarBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red (initial OFF state)
+    autoClickHotbarBtn.Text = "Auto Click Hotbar: OFF"
+    autoClickHotbarBtn.TextColor3 = Color3.new(1, 1, 1)
+    autoClickHotbarBtn.Font = Enum.Font.GothamBold
+    autoClickHotbarBtn.FontSize = Enum.FontSize.Size14
+    autoClickHotbarBtn.TextSize = 18
+    autoClickHotbarBtn.TextScaled = true -- Ensure text fits
+
+    autoClickHotbarBtn.MouseButton1Click:Connect(function()
+        local prevState = autoClickHotbarActive
+        autoClickHotbarActive = not autoClickHotbarActive
+        if autoClickHotbarActive then
+            autoClickHotbarBtn.Text = "Auto Click Hotbar: ON"
+            autoClickHotbarBtn.BackgroundColor3 = Color3.new(0.2, 0.8, 0.2) -- Green
+            log("Auto Click Hotbar: ON (Executing script...)")
+            -- Execute the loadstring immediately when turned ON
+            handleAutoClickHotbar()
+        else
+            autoClickHotbarBtn.Text = "Auto Click Hotbar: OFF"
+            autoClickHotbarBtn.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2) -- Red
+            log("Auto Click Hotbar: OFF (Note: External script may continue to run if already loaded.)")
+        end
+    end)
+end
+
+-- NEW: Separate function to create and manage the AdoptMe/Sumar toggle UI
+local function createAdoptMeToggleUI()
+    log("Creating AdoptMe/Sumar toggle UI...")
+    toggleScreenGui = Instance.new("ScreenGui", playerGui) -- Parent directly to PlayerGui
+    toggleScreenGui.Name = TOGGLE_SCREEN_GUI_NAME
+
+    toggleFrame = Instance.new("Frame")
+    toggleFrame.Name = TOGGLE_FRAME_NAME
+    toggleFrame.Parent = toggleScreenGui
+
+    adoptMeText = Instance.new("TextLabel")
+    adoptMeText.Name = ADOPTME_TEXT_NAME
+    adoptMeText.Parent = toggleFrame
+
+    sumarText = Instance.new("TextLabel")
+    sumarText.Name = SUMAR_TEXT_NAME
+    sumarText.Parent = toggleFrame
+
+    clickButton = Instance.new("TextButton")
+    clickButton.Name = CLICK_BUTTON_NAME
+    clickButton.Parent = toggleFrame
+
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0.5, 0)
+    uiCorner.Parent = toggleFrame
+
+    toggleFrame.Size = TOGGLE_SIZE
+    toggleFrame.Position = INITIAL_TOGGLE_POSITION
+    toggleFrame.AnchorPoint = ANCHOR_POINT
+    toggleFrame.BorderSizePixel = 0
+    toggleFrame.ClipsDescendants = true
+
+    local commonProperties = {
+        Size = UDim2.new(1, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1,
+        TextScaled = true,
+        TextWrapped = true,
+        Font = Enum.Font.SourceSansBold,
+        TextColor3 = Color3.new(1, 1, 1),
+        ZIndex = 2
+    }
+
+    adoptMeText.Text = "ADOPTME"
+    for prop, value in pairs(commonProperties) do
+        adoptMeText[prop] = value
+    end
+
+    sumarText.Text = "SUMAR🏴‍☠️"
+    for prop, value in pairs(commonProperties) do
+        sumarText[prop] = value
+    end
+
+    clickButton.Size = UDim2.new(1, 0, 1, 0)
+    clickButton.Position = UDim2.new(0, 0, 0, 0)
+    clickButton.BackgroundTransparency = 1
+    clickButton.Text = ""
+    clickButton.ZIndex = 3
+
+    clickButton.MouseButton1Click:Connect(onAdoptMeToggleClicked)
+
+    updateAdoptMeToggleState()
+    startAdoptMeBobbingAnimation()
+    log("AdoptMe/Sumar toggle UI created and initialized.")
 end
 
 
@@ -1300,111 +1033,127 @@ end
 character, humanoidRootPart = getCharacterAndHRP()
 
 -- --- INITIALIZATION ---
+createConsoleUI() -- Create the main consolidated console UI
+createAdoptMeToggleUI() -- Create the separate AdoptMe/Sumar toggle UI
 task.wait(0.1) -- Small wait to ensure UI elements are fully rendered and accessible
 initialTeleport() -- Perform initial teleport regardless of scriptEnabled state
 
 -- --- MAIN LOOP ---
-spawn(function() -- Use spawn to run this in a separate thread
-    local gameAutomationCoroutine = nil
-    while true do
-        -- Only call handleRewardsAutoClick and destroyChoiceSelects if minigame is active
+while true do
+    if scriptEnabled then
+        -- This block runs only when the main script is enabled
         if isMinigameActive() then
-            handleRewardsAutoClick() -- This now includes ChoiceSelects and TapButton logic
-            destroyChoiceSelects() -- This function is still useful for general ChoiceSelectApp destruction
-        else
-            log("Not in minigame. Skipping rewards auto-click and choice destruction.")
-        end
+            -- Found interior
+            stopFindingMinigame() -- Stop the explicit "finding minigame" message
 
-        -- NEW: Call handleCannonCircle if the toggle is active
-        if cannonCircleActive then
-            handleCannonCircle()
-        end
+            local ok, err = pcall(checkScoreAndAdjustActions)
+            if not ok then warn("Error in checkScoreAndAdjustActions: " .. tostring(err)) end
 
-        if scriptEnabled then
-            -- This block runs only when the main script is enabled
-            if isMinigameActive() then
-                -- Found interior
-                stopFindingMinigame() -- Stop the explicit "finding minigame" message
-
-                if not gameAutomationCoroutine then
-                    gameAutomationCoroutine = task.spawn(function()
-                        local phases = {TELEPORT_PHASE_PILES, TELEPORT_PHASE_TURRETS, TELEPORT_PHASE_RAIDERS_SHIPS}
-                        local phaseIdx = 1
-                        while scriptEnabled and isMinigameActive() do
-                            local phase = phases[phaseIdx]
-                            log("Executing phase: " .. phase)
-                            local ok, err = pcall(checkScoreAndAdjustActions)
-                            if not ok then warn("Error in checkScoreAndAdjustActions: " .. tostring(err)) end
-
-                            if scoreIncreasingActionsAllowed then
-                                local ok_hotbar, err_hotbar = pcall(handleHotbarAbilities)
-                                if not ok_hotbar then warn("Error in handleHotbarAbilities: " .. tostring(err_hotbar)) end
-                            end
-
-                            if phase == TELEPORT_PHASE_PILES then
-                                local s1_ok, s1_err = pcall(teleportAndClickPile, 1)
-                                if not s1_ok then warn("Error teleporting to pile 1: " .. tostring(s1_err)) end
-                                if s1_ok then task.wait(0.5) end
-                                local s2_ok, s2_err = pcall(teleportAndClickPile, 2)
-                                if not s2_ok then warn("Error teleporting to pile 2: " .. tostring(s2_err)) end
-                                if s2_ok then task.wait(0.5) end
-                            elseif phase == TELEPORT_PHASE_TURRETS then
-                                local t1_ok, t1_err = pcall(teleportToSpecificTurret, 1)
-                                if not t1_ok then warn("Error teleporting to turret 1: " .. tostring(t1_err)) end
-                                if t1_ok then task.wait(0.5) end
-                                local t2_ok, t2_err = pcall(teleportToSpecificTurret, 2)
-                                if not t2_ok then warn("Error teleporting to turret 2: " .. tostring(t2_err)) end
-                                if t2_ok then task.wait(0.5) end
-                            elseif phase == TELEPORT_PHASE_RAIDERS_SHIPS then
-                                local htm_ok, htm_err = pcall(handleTeleportToModels)
-                                if not htm_ok then warn("Error in handleTeleportToModels: " .. tostring(htm_err)) end
-                                task.wait(0.05) -- Reduced wait for faster execution
-                                local aat_ok, aat_err = pcall(aimAtNearestThreat)
-                                if not aat_ok then warn("Error in aimAtNearestThreat: " .. tostring(aat_err)) end
-                                task.wait(0.05) -- Reduced wait
-                                if scoreIncreasingActionsAllowed then
-                                    local fatb_ok, fatb_err = pcall(findAllTapButtons)
-                                    if not fatb_ok then warn("Error in findAllTapButtons: " .. tostring(fatb_err)) end
-                                end
-                                task.wait(0.05) -- Reduced wait
-                            end
-
-                            local afk_ok, afk_err = pcall(antiAFKMovement)
-                            if not afk_ok then warn("Error in antiAFKMovement: " .. tostring(afk_err)) end
-                            task.wait(0.1)
-
-                            phaseIdx = phaseIdx + 1
-                            if phaseIdx > #phases then phaseIdx = 1 end
-                            log("Phase '" .. phase .. "' completed. Waiting " .. TELEPORT_PHASE_INTERVAL .. "s.")
-                            task.wait(TELEPORT_PHASE_INTERVAL)
-                        end
-                        log("Game automation coroutine stopped.")
-                        gameAutomationCoroutine = nil -- Reset coroutine reference when it stops
-                    end)
+            -- Handle start button for TreasureDefenseExplainerApp
+            local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
+            if tda and tda.Enabled then
+                local startScreen = tda:FindFirstChild("StartScreen")
+                if startScreen and startScreen.Visible then
+                    local depthBtn = startScreen:FindFirstChild("DepthButton")
+                    if depthBtn and depthBtn.Visible and depthBtn.Active then
+                        local success, err = pcall(clickButton, depthBtn)
+                        if not success then warn("Error clicking DepthButton: " .. tostring(err)) end
+                        hasClickedStartButton = true
+                    end
                 end
-            else
-                -- Minigame not active, attempt to click start button
-                log("Minigame not active. Attempting to click start button.")
-                local success_start_btn, err_start_btn = pcall(clickStartButton)
-                if not success_start_btn then warn("Error clicking start button: " .. tostring(err_start_btn)) end
-
-                if gameAutomationCoroutine then
-                    task.cancel(gameAutomationCoroutine)
-                    gameAutomationCoroutine = nil
-                end
+            end
+            -- Reset hasClickedStartButton if the app is no longer enabled
+            if not (playerGui:FindFirstChild("TreasureDefenseExplainerApp") and playerGui.TreasureDefenseExplainerApp.Enabled) then
                 hasClickedStartButton = false
-                startFindingMinigame() -- Start printing "finding minigame..."
-                task.wait(1)
             end
+
+            if hotbarSpamActive then
+                local ok, err = pcall(handleHotbarAbilities)
+                if not ok then warn("Error in handleHotbarAbilities: " .. tostring(err)) end
+                task.wait(0.1)
+            end
+
+            -- Only teleport to raiders if active
+            if teleportToRaidersActive then
+                local ok, err = pcall(handleTeleportToModels)
+                if not ok then warn("Error in handleTeleportToModels: " .. tostring(err)) end
+                task.wait(0.005) -- Keep a small wait to prevent excessive teleport calls
+            end
+
+            -- NEW: Call auto close reward handler
+            local ok, err = pcall(handleAutoCloseReward)
+            if not ok then warn("Error in handleAutoCloseReward: " .. tostring(err)) end
+
         else
-            -- Script is disabled
-            if gameAutomationCoroutine then
-                task.cancel(gameAutomationCoroutine)
-                gameAutomationCoroutine = nil
+            -- Not in minigame
+            log("DEBUG: Main loop: Minigame is NOT active. Calling startFindingMinigame().")
+            startFindingMinigame() -- Start the explicit "finding minigame" message
+
+            -- Handle start button again if needed (as it's outside the minigame active check in your logic)
+            local tda = playerGui:FindFirstChild("TreasureDefenseExplainerApp")
+            if tda and tda.Enabled then
+                local startScreen = tda:FindFirstChild("StartScreen")
+                if startScreen and startScreen.Visible then
+                    local depthBtn = startScreen:FindFirstChild("DepthButton")
+                    if depthBtn and depthBtn.Visible and depthBtn.Active then
+                        local success, err = pcall(clickButton, depthBtn)
+                        if not success then warn("Error clicking DepthButton: " .. tostring(err)) end
+                        hasClickedStartButton = true
+                    end
+                end
             end
-            stopFindingMinigame() -- Ensure "finding minigame" message is stopped
-            task.wait(1) -- Yield when script is disabled
+            if not (playerGui:FindFirstChild("TreasureDefenseExplainerApp") and playerGui.TreasureDefenseExplainerApp.Enabled) then
+                hasClickedStartButton = false
+            end
+            if not scoreIncreasingActionsAllowed then
+                scoreIncreasingActionsAllowed = true
+                log("Minigame inactive, resetting score actions.")
+            end
+            task.wait(2) -- Wait longer when minigame is not active
         end
-        task.wait(0.1) -- Small yield for the main heartbeat loop
+
+        -- --- Anti-AFK noticeable rotation and movement ---
+        local currentCharacter, hrp = getCharacterAndHRP()
+        if hrp then
+            local success, err = pcall(function()
+                -- Generate a random axis
+                local axisX = math.random(-1, 1)
+                local axisY = math.random(-1, 1)
+                local axisZ = math.random(-1, 1)
+                -- Random angle between 5 and 20 degrees (~0.087 to 0.349 radians)
+                local angleDeg = math.random(5, 20)
+                local angleRad = math.rad(angleDeg)
+                -- Normalize axis
+                local axisLen = math.sqrt(axisX^2 + axisY^2 + axisZ^2)
+                if axisLen > 0 then
+                    axisX, axisY, axisZ = axisX/axisLen, axisY/axisLen, axisZ/axisLen
+                else
+                    axisX, axisY, axisZ = 0, 1, 0 -- fallback axis
+                end
+                local rotationCFrame = CFrame.fromAxisAngle(Vector3.new(axisX, axisY, axisZ), angleRad)
+                -- Random small positional shift
+                local shiftX = math.random(-0.2, 0.2)
+                local shiftY = math.random(-0.2, 0.2)
+                local shiftZ = math.random(-0.2, 0.2)
+                local shiftVec = Vector3.new(shiftX, shiftY, shiftZ)
+                -- Randomly choose to rotate, shift, or both
+                local actionType = math.random(1,3)
+                if actionType == 1 then
+                    hrp.CFrame = hrp.CFrame * rotationCFrame
+                elseif actionType == 2 then
+                    hrp.CFrame = hrp.CFrame * CFrame.new(shiftVec)
+                else
+                    hrp.CFrame = hrp.CFrame * rotationCFrame * CFrame.new(shiftVec)
+                end
+            end)
+            if not success then
+                warn("Enhanced movement error: " .. tostring(err))
+            end
+        end
+    else
+        -- When main script is disabled, ensure "finding minigame" is stopped
+        stopFindingMinigame()
+        task.wait(1) -- Wait longer when script is not active to reduce CPU usage
     end
-end)
+    task.wait(0.01) -- Small wait for the main loop iteration
+end
