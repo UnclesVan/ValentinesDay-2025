@@ -435,6 +435,54 @@ local lastCreatedWall = nil
 local loadingTextInstance = nil
 local firstTeleportDone = false
 
+-- New variable for the toggle state
+local ringTeleportEnabled = true
+
+-- Function to update the toggle button text
+local toggleButton = nil -- Declare it here to be accessible globally
+
+local function updateToggleButtonText()
+    if toggleButton then
+        toggleButton.Text = "Ring Teleport: " .. (ringTeleportEnabled and "ON" or "OFF")
+        toggleButton.TextColor3 = ringTeleportEnabled and Color3.new(0, 1, 0) or Color3.new(1, 0, 0) -- Green for ON, Red for OFF
+    end
+end
+
+-- Create the toggle button UI
+local playerGui = LocalPlayer:WaitForChild("PlayerGui", 30)
+if playerGui then
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "RingTeleportToggleGui"
+    screenGui.Parent = playerGui
+
+    toggleButton = Instance.new("TextButton")
+    toggleButton.Name = "RingTeleportToggleButton"
+    toggleButton.Size = UDim2.new(0.2, 0, 0.05, 0)
+    toggleButton.Position = UDim2.new(0.05, 0, 0.9, 0) -- Position at bottom-left
+    toggleButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+    toggleButton.BorderColor3 = Color3.new(0.1, 0.1, 0.1)
+    toggleButton.BorderSizePixel = 2
+    toggleButton.Font = Enum.Font.SourceSansBold
+    toggleButton.TextScaled = true
+    toggleButton.TextWrapped = true
+    toggleButton.ZIndex = 10
+    toggleButton.Parent = screenGui
+
+    -- Set initial text
+    updateToggleButtonText()
+
+    -- Connect the toggle functionality
+    toggleButton.MouseButton1Click:Connect(function()
+        ringTeleportEnabled = not ringTeleportEnabled
+        updateToggleButtonText()
+        print("Ring Teleport Toggled: " .. (ringTeleportEnabled and "ON" or "OFF"))
+    end)
+    print("Ring Teleport Toggle Button created.")
+else
+    warn("PlayerGui not found, cannot create Ring Teleport Toggle Button.")
+end
+
+
 local function time_string_to_seconds(time_str)
     local minutes_str, seconds_str = time_str:match("^(%d%d):(%d%d)$")
     if minutes_str and seconds_str then
@@ -498,13 +546,13 @@ if initialTargetPart and initialTargetPart:IsA("BasePart") then
     wall.Anchored = true
     -- Position and orient the wall
     wall.CFrame = CFrame.new(initialTargetPart.Position) *
-                  CFrame.fromMatrix(
-                      Vector3.new(),
-                      initialTargetPart.CFrame.RightVector,
-                      Vector3.new(0, 1, 0),
-                      initialTargetPart.CFrame.LookVector
-                  ) *
-                  CFrame.new(0, 20 / 2, 0)
+                    CFrame.fromMatrix(
+                        Vector3.new(),
+                        initialTargetPart.CFrame.RightVector,
+                        Vector3.new(0, 1, 0),
+                        initialTargetPart.CFrame.LookVector
+                    ) *
+                    CFrame.new(0, 20 / 2, 0)
     wall.Parent = Workspace
     lastCreatedWall = wall
     print("Initial solid studs wall created at: " .. TARGET_PART_PATH)
@@ -517,7 +565,6 @@ if loadingTextInstance then
     loadingTextInstance.Text = "Script Loaded"
 end
 
-local teleportationActive = true
 local hasTeleportedAfterStop = false
 local STOP_TIME_SECONDS = time_string_to_seconds(STOP_TIME_STRING)
 
@@ -537,16 +584,19 @@ while true do
         print("Teleportation paused: " .. SUMMERFEST_CONTAINER_PATH .. " not found.")
     end
 
-    if shouldBeActive and not teleportationActive then
+    -- Combine the game timer logic with the new toggle
+    local actualTeleportActive = shouldBeActive and ringTeleportEnabled
+
+    if actualTeleportActive and not (teleportationActive == true) then -- Check if state changed to active
         teleportationActive = true
         hasTeleportedAfterStop = false
-        print("Teleportation resumed.")
-    elseif not shouldBeActive and teleportationActive then
+        print("Teleportation resumed (by game timer and toggle).")
+    elseif not actualTeleportActive and (teleportationActive == true) then -- Check if state changed to inactive
         teleportationActive = false
-        print("Teleportation paused.")
+        print("Teleportation paused (by game timer or toggle).")
     end
 
-    if teleportationActive then
+    if actualTeleportActive then
         if humanoidRootPart and targetPart and targetPart:IsA("BasePart") then
             humanoidRootPart.CFrame = targetPart.CFrame
             if not firstTeleportDone and loadingTextInstance then
@@ -575,13 +625,13 @@ while true do
             wall.CanCollide = false
             wall.Anchored = true
             wall.CFrame = CFrame.new(humanoidRootPart.Position) *
-                          CFrame.fromMatrix(
-                              Vector3.new(),
-                              humanoidRootPart.CFrame.RightVector,
-                              Vector3.new(0,1,0),
-                              humanoidRootPart.CFrame.LookVector
-                          ) *
-                          CFrame.new(0, 20/2, 0)
+                            CFrame.fromMatrix(
+                                Vector3.new(),
+                                humanoidRootPart.CFrame.RightVector,
+                                Vector3.new(0,1,0),
+                                humanoidRootPart.CFrame.LookVector
+                            ) *
+                            CFrame.new(0, 20/2, 0)
             wall.Parent = Workspace
             lastCreatedWall = wall
             print("Teleported and created solid wall at character's position: " .. TARGET_PART_PATH)
@@ -589,7 +639,7 @@ while true do
             warn("Continuous teleport failed: HumanoidRootPart or target part not ready.")
         end
         task.wait(TELEPORT_DELAY_SECONDS)
-    elseif not teleportationActive and not hasTeleportedAfterStop then
+    elseif not actualTeleportActive and not hasTeleportedAfterStop then
         if humanoidRootPart and targetPart and targetPart:IsA("BasePart") then
             humanoidRootPart.CFrame = targetPart.CFrame
             hasTeleportedAfterStop = true
@@ -614,13 +664,13 @@ while true do
             wall.CanCollide = false
             wall.Anchored = true
             wall.CFrame = CFrame.new(humanoidRootPart.Position) *
-                          CFrame.fromMatrix(
-                              Vector3.new(),
-                              humanoidRootPart.CFrame.RightVector,
-                              Vector3.new(0,1,0),
-                              humanoidRootPart.CFrame.LookVector
-                          ) *
-                          CFrame.new(0, 20/2, 0)
+                            CFrame.fromMatrix(
+                                Vector3.new(),
+                                humanoidRootPart.CFrame.RightVector,
+                                Vector3.new(0,1,0),
+                                humanoidRootPart.CFrame.LookVector
+                            ) *
+                            CFrame.new(0, 20/2, 0)
             wall.Parent = Workspace
             lastCreatedWall = wall
             print("Created final solid wall after last teleport.")
