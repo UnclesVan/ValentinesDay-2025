@@ -366,10 +366,13 @@ AutoOpenStatusLabel.Visible = false
 local autoOpenEnabled = false
 local autoBuyEnabled = false
 local autoOpenThread: thread? = nil
-local TARGET_GIFT_SPECIES_ID = "summerfest_2025_sticker_pack" -- Fixed to Sticker Pack
-local readableTargetName = "Summer Fest Sticker Pack"          -- Fixed to Sticker Pack
+local TARGET_GIFT_SPECIES_ID = "halloween_2025_sticker_pack" -- Fixed to Sticker Pack
+local readableTargetName = "halloween_2025_sticker_pack"          -- Fixed to Sticker Pack
 local foundTargetGiftUniqueId = nil
 local buyAmount: number = 1
+
+
+
 
 local possibleItems = {
     "Uncommon Pet (Dog)", "Rare Pet (Cat)", "Ultra-Rare Pet (Bee)",
