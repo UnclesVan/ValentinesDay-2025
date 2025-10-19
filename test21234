@@ -519,31 +519,15 @@ end
 
 
 
-print("5")
-wait("5")
-print("4")
-wait("4")
-print("3")
-wait("3")
-print("2")
-wait("2")
-wait("1")
-print("1")
-
-
-
-
-
-
 --[[
     Roblox Teleporter Script - Configuration and Core Logic
     This script is designed to perform safe, timed teleportation and concurrent model manipulation
     to assist with minigame grinding.
     
-    *** CRITICAL UI FIX APPLIED: The `createNativeDoorStatusUI` function now uses a
-        `repeat...until` loop with `task.wait(0.5)` to continuously search for the
-        'ContentFrame' inside 'HauntletFarmUI' until it is found, ensuring the custom
-        UI is always parented correctly, even if the parent GUI loads very late.
+    *** TASK.SPAWN IMPLEMENTED: The `createNativeDoorStatusUI` function is now spawned 
+        to run asynchronously. This ensures the continuous UI search (the repeat...until loop) 
+        does not block the main script from starting other services like the Model Mover 
+        and the main Teleport Loop.
 ]]
 
 -- =================================================================================
@@ -592,7 +576,8 @@ local isTeleporting = true       -- Operational status: true only if (Manual ON 
 local isManuallyToggledOn = true -- New flag: Tracks the state of the UI button
 local teleportThread = nil       -- Reference to the main teleport loop thread
 local cachedTargets = {}         -- Stores the list of DoorDressing parts and their house names
-local shouldRecacheTargets = true -- NEW: Flag to force target recalculation on start/resume after minigame end
+local shouldRecacheTargets = true -- Flag to force target recalculation on start/resume after minigame end
+local uiCreationComplete = false  -- NEW: Flag to track when UI is successfully created
 
 -- Global UI Colors (Matching the provided visual style)
 local COLOR_INFO = Color3.new(0.1, 0.4, 0.8)   -- Blue
@@ -609,6 +594,7 @@ local COLOR_STATUS_BAR = Color3.new(0.1, 0.1, 0.1) -- Near Black for top bar
 
 -- Helper function to update UI status and log to console
 local function updateStatus(message, color)
+    -- Only update the label if it exists (it might not be created yet if we are waiting for the UI)
     if DoorStatusLabel then
         DoorStatusLabel.Text = message
     end
@@ -631,7 +617,6 @@ local function clickButton(button)
 
     if button and getconnections then
         -- *** FULL MOUSE 1 EVENT FIRING SEQUENCE (Down, Click, Up) ***
-        -- This logic is fine for mobile as well, provided the button exists and is clickable.
         
         -- 1. Down (Press)
         for _, connection in pairs(getconnections(button.MouseButton1Down)) do
@@ -670,9 +655,13 @@ local function createNativeDoorStatusUI()
     -- --- ROBUST CONTINUOUS SEARCH FOR PARENT UI ---
     local targetParentFrame = nil
     
-    updateStatus("Searching for HauntletFarmUI parent...", COLOR_SEARCH)
+    -- Since this runs in a separate thread, we can update the console immediately
+    print("[UI_THREAD] Searching for HauntletFarmUI parent continuously...")
 
     repeat
+        -- Check if the player is still active
+        if not player or not player.Parent then break end 
+        
         local hauntletUI = playerGui:FindFirstChild("HauntletFarmUI")
         if hauntletUI then
             local mainFrame = hauntletUI:FindFirstChild("MainFrame")
@@ -692,10 +681,10 @@ local function createNativeDoorStatusUI()
 
     -- --- PARENTING LOGIC ---
     if targetParentFrame then
-        print("[STATUS] Found HauntletFarmUI parent. Inserting Teleporter UI inside.")
+        print("[UI_THREAD] Found HauntletFarmUI parent. Inserting Teleporter UI inside.")
         parentInstance = targetParentFrame
     else
-        print("[STATUS] HauntletFarmUI parent path not found or timed out. Creating local ScreenGui (Fallback).")
+        print("[UI_THREAD] HauntletFarmUI parent path not found or timed out. Creating local ScreenGui (Fallback).")
         -- Fallback: Create a local ScreenGui if the target is missing or corrupted
         local ScreenGui = Instance.new("ScreenGui")
         ScreenGui.Name = "TeleporterUI"
@@ -803,18 +792,23 @@ local function createNativeDoorStatusUI()
     -- **FINAL PARENTING STEP**
     MainFrame.Parent = parentInstance
 
+    -- Set the flag and return the buttons to the `startTeleport` function
+    uiCreationComplete = true
     return TeleportToggle, CloseButton
 end
 
-
 -- Function to continuously monitor the minigame timer and control isTeleporting state
 local function timerMonitor()
+    -- Wait until the UI elements are guaranteed to exist before proceeding
+    while not uiCreationComplete do task.wait(0.1) end
+    
     updateStatus("Timer Monitor active.", COLOR_INFO)
     
     -- Calculate the actual minimum safe time from the config string
     local requiredMinSafeSeconds = parseTime(MIN_STOP_TIME_MMSS) + 1
 
     while task.wait(0.5) do
+        
         -- --- DIRECT PATH TO VALUE LABEL (Watching this label) ---
         local valueLabel = player.PlayerGui:FindFirstChild("MinigameInGameApp", true)
         valueLabel = valueLabel and valueLabel:FindFirstChild("Body", true)
@@ -823,7 +817,6 @@ local function timerMonitor()
         valueLabel = valueLabel and valueLabel:FindFirstChild("ValueLabel")
         
         -- Get UI buttons for visual update
-        -- Updated path to support both ScreenGui (fallback) and HauntletFarmUI parent
         local uiContainer = player.PlayerGui:FindFirstChild("TeleporterUI") or player.PlayerGui:FindFirstChild("HauntletFarmUI", true)
         local mainFrame = uiContainer and uiContainer:FindFirstChild("TeleporterMainFrame", true)
         local toggleButton = mainFrame and mainFrame:FindFirstChild("ButtonFrame", true) and mainFrame.ButtonFrame:FindFirstChild("TeleportToggle")
@@ -889,6 +882,9 @@ end
 
 -- Function to continuously find and click the target GUI button
 local function infiniteClicker()
+    -- Wait until the UI elements are guaranteed to exist before proceeding
+    while not uiCreationComplete do task.wait(0.1) end
+    
     updateStatus("Sandman/Knock Clicker thread started.", COLOR_SUCCESS)
     
     while task.wait(0.5) do -- Loop indefinitely, checking every 0.5 seconds
@@ -924,11 +920,15 @@ local function infiniteModelMover()
     while task.wait(MODEL_MOVE_INTERVAL) do
         -- Find the interior model using prefix matching
         local interior = nil
-        for _, child in pairs(workspace.Interiors:GetChildren()) do
-            -- Check if the name starts with the TARGET_INTERIOR_NAME prefix
-            if child:IsA("Model") and child.Name:sub(1, #TARGET_INTERIOR_NAME) == TARGET_INTERIOR_NAME then
-                interior = child
-                break -- Found the interior model
+        local interiors = workspace:FindFirstChild("Interiors")
+        
+        if interiors then
+            for _, child in pairs(interiors:GetChildren()) do
+                -- Check if the name starts with the TARGET_INTERIOR_NAME prefix
+                if child:IsA("Model") and child.Name:sub(1, #TARGET_INTERIOR_NAME) == TARGET_INTERIOR_NAME then
+                    interior = child
+                    break -- Found the interior model
+                end
             end
         end
         
@@ -960,7 +960,11 @@ end
 local function findRingTarget()
     -- Find the interior model using prefix matching
     local interior = nil
-    for _, child in pairs(workspace.Interiors:GetChildren()) do
+    local interiors = workspace:FindFirstChild("Interiors")
+    
+    if not interiors then return nil end
+    
+    for _, child in pairs(interiors:GetChildren()) do
         -- Check if the name starts with the TARGET_INTERIOR_NAME prefix
         if child:IsA("Model") and child.Name:sub(1, #TARGET_INTERIOR_NAME) == TARGET_INTERIOR_NAME then
             interior = child
@@ -1032,7 +1036,6 @@ local function findAndFilterTargets(rootSearchArea)
 end
 
 -- Core logic function to be called once per while loop iteration.
--- Returning from this function acts as the "continue" to the next iteration of the outer while loop.
 local function executeTeleportStep(rootSearchArea, currentHRP)
     
     -- --- TARGET FINDING AND CACHING LOGIC (RE-SEARCH) ---
@@ -1071,7 +1074,7 @@ local function executeTeleportStep(rootSearchArea, currentHRP)
 
     updateStatus(string.format("Found %d targets. Starting teleport sequence (10s delay per target).", totalTargets), COLOR_INFO)
 
-    for i, targetInfo in ipairs(cachedTargets) do -- Iterate over cachedTargets, NOW targetInfo = {part, houseName}
+    for i, targetInfo in ipairs(cachedTargets) do 
         
         -- Check operational status frequently during the loop
         while not isTeleporting do task.wait(0.1) end
@@ -1174,7 +1177,24 @@ end
 
 -- Entry point: Sets up UI and starts concurrent tasks
 local function startTeleport()
-    local TeleportToggle, CloseButton = createNativeDoorStatusUI() 
+    
+    local TeleportToggle, CloseButton = nil, nil
+    
+    -- *** NEW: Spawn the UI creation to run asynchronously. ***
+    local uiThread = task.spawn(function()
+        TeleportToggle, CloseButton = createNativeDoorStatusUI() 
+        print("[UI_THREAD] UI creation and parenting is complete.")
+    end)
+    
+    -- Wait until the UI thread completes its work and returns the buttons
+    task.wait(uiThread) 
+    
+    -- If UI creation failed (e.g., timed out), we can't proceed with button setup
+    if not TeleportToggle or not CloseButton then
+        print("[ERROR] UI Creation failed or timed out. Stopping script initialization.")
+        return 
+    end
+    
     updateStatus("Script Initialized. Starting background services...", COLOR_INFO)
 
     -- UI Button Connections
