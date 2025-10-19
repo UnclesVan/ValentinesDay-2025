@@ -513,8 +513,22 @@ end
 
 
 
-task.wait(3)
 
+
+
+
+
+
+print("5")
+wait("5")
+print("4")
+wait("4")
+print("3")
+wait("3")
+print("2")
+wait("2")
+wait("1")
+print("1")
 
 
 
@@ -526,9 +540,10 @@ task.wait(3)
     This script is designed to perform safe, timed teleportation and concurrent model manipulation
     to assist with minigame grinding.
     
-    *** FIX APPLIED: Added a robust `WaitForChild` mechanism to ensure the custom UI is
-        always parented correctly to `HauntletFarmUI.MainFrame.ContentFrame`, waiting
-        for the game's GUI to appear if necessary.
+    *** CRITICAL UI FIX APPLIED: The `createNativeDoorStatusUI` function now uses a
+        `repeat...until` loop with `task.wait(0.5)` to continuously search for the
+        'ContentFrame' inside 'HauntletFarmUI' until it is found, ensuring the custom
+        UI is always parented correctly, even if the parent GUI loads very late.
 ]]
 
 -- =================================================================================
@@ -645,35 +660,42 @@ local function clickButton(button)
     end
 end
 
--- --- NATIVE STATUS UI CREATION (Redesigned to parent to existing UI with waiting) ---
+-- --- NATIVE STATUS UI CREATION (Redesigned to parent to existing UI with continuous searching) ---
 local function createNativeDoorStatusUI()
     local playerGui = player.PlayerGui
     local parentInstance = nil
+    local maxWaitTime = 60 -- Wait up to 60 seconds before giving up on the native parent
+    local elapsedTime = 0
     
-    -- --- ROBUST WAIT FOR PARENT UI ---
-    local hauntletUI = playerGui:FindFirstChild("HauntletFarmUI")
-    if not hauntletUI then
-        updateStatus("Waiting for HauntletFarmUI...", COLOR_SEARCH)
-        hauntletUI = playerGui:WaitForChild("HauntletFarmUI", 60) -- Wait up to 60 seconds for the top-level UI
-    end
-    
+    -- --- ROBUST CONTINUOUS SEARCH FOR PARENT UI ---
     local targetParentFrame = nil
     
-    if hauntletUI then
-        -- Attempt to find the full path using WaitForChild for deeper elements
-        local mainFrame = hauntletUI:WaitForChild("MainFrame", 10)
-        local contentFrame = mainFrame and mainFrame:WaitForChild("ContentFrame", 10)
-        
-        if contentFrame and contentFrame:IsA("Frame") then
-            print("[STATUS] Found HauntletFarmUI parent. Inserting Teleporter UI inside.")
-            targetParentFrame = contentFrame
-        end
-    end
+    updateStatus("Searching for HauntletFarmUI parent...", COLOR_SEARCH)
 
+    repeat
+        local hauntletUI = playerGui:FindFirstChild("HauntletFarmUI")
+        if hauntletUI then
+            local mainFrame = hauntletUI:FindFirstChild("MainFrame")
+            local contentFrame = mainFrame and mainFrame:FindFirstChild("ContentFrame")
+            
+            if contentFrame and contentFrame:IsA("Frame") then
+                targetParentFrame = contentFrame
+                break -- Exit the loop, we found the target
+            end
+        end
+        
+        -- Wait briefly and update time
+        task.wait(0.5)
+        elapsedTime = elapsedTime + 0.5
+        
+    until targetParentFrame or elapsedTime >= maxWaitTime
+
+    -- --- PARENTING LOGIC ---
     if targetParentFrame then
+        print("[STATUS] Found HauntletFarmUI parent. Inserting Teleporter UI inside.")
         parentInstance = targetParentFrame
     else
-        print("[STATUS] HauntletFarmUI parent path not found or timed out. Creating local ScreenGui.")
+        print("[STATUS] HauntletFarmUI parent path not found or timed out. Creating local ScreenGui (Fallback).")
         -- Fallback: Create a local ScreenGui if the target is missing or corrupted
         local ScreenGui = Instance.new("ScreenGui")
         ScreenGui.Name = "TeleporterUI"
@@ -803,11 +825,11 @@ local function timerMonitor()
         -- Get UI buttons for visual update
         -- Updated path to support both ScreenGui (fallback) and HauntletFarmUI parent
         local uiContainer = player.PlayerGui:FindFirstChild("TeleporterUI") or player.PlayerGui:FindFirstChild("HauntletFarmUI", true)
-        local mainFrame = uiContainer and uiContainer:FindFirstChild("TeleporterMainFrame")
-        local toggleButton = mainFrame and mainFrame.ButtonFrame.TeleportToggle
+        local mainFrame = uiContainer and uiContainer:FindFirstChild("TeleporterMainFrame", true)
+        local toggleButton = mainFrame and mainFrame:FindFirstChild("ButtonFrame", true) and mainFrame.ButtonFrame:FindFirstChild("TeleportToggle")
 
         -- --- HANDLE UI TOGGLE APPEARANCE ---
-        if toggleButton then
+        if toggleButton and toggleButton:IsA("GuiButton") then
             if isManuallyToggledOn then
                 toggleButton.Text = "TELEPORT: ON"
                 toggleButton.BackgroundColor3 = COLOR_SUCCESS
@@ -970,7 +992,7 @@ local function findAndFilterTargets(rootSearchArea)
     local validTargets = {}
 
     if not rootSearchArea then
-        updateStatus("Error: 'Interiors' folder not found.", COLOR_ERROR)
+        updateStatus("Error: 'Interiors' folder not found. Waiting for it to appear...", COLOR_ERROR)
         return validTargets
     end
     
@@ -1016,19 +1038,22 @@ local function executeTeleportStep(rootSearchArea, currentHRP)
     -- --- TARGET FINDING AND CACHING LOGIC (RE-SEARCH) ---
     if shouldRecacheTargets then
         
+        -- If the root search area is missing, force the loop to continue searching for it
         if not rootSearchArea then
-            updateStatus("Error: 'Interiors' folder not found. Waiting 5s.", COLOR_ERROR)
-            task.wait(5)
-            return -- Replaces the old 'goto next_loop'
+            updateStatus("Error: 'Interiors' folder not found. Retrying search in 0.5s.", COLOR_ERROR)
+            task.wait(0.5) -- Faster retry for missing root folder
+            return
         end
         
         -- Wait robustly for models to load (in case a new interior just loaded)
-        local currentInteriorCount = 0
-        repeat
-            updateStatus("Recaching: Waiting for new interior models to load...", COLOR_SEARCH)
-            task.wait(1.0)
-            currentInteriorCount = #rootSearchArea:GetChildren()
-        until currentInteriorCount > 0
+        local currentInteriorCount = #rootSearchArea:GetChildren()
+        
+        -- Only wait if the count is zero (meaning no minigame world is loaded yet)
+        if currentInteriorCount == 0 then
+            updateStatus("Recaching: Waiting for new interior models to load (0.5s retry)...", COLOR_SEARCH)
+            task.wait(0.5)
+            return -- Skip this iteration, force a check next time
+        end
 
         -- Perform the expensive search
         cachedTargets = findAndFilterTargets(rootSearchArea)
@@ -1038,10 +1063,10 @@ local function executeTeleportStep(rootSearchArea, currentHRP)
     local totalTargets = #cachedTargets
 
     if totalTargets == 0 then
-        updateStatus("No targets found. Forcing re-search in 5s. (Searching for Minigame Houses)", COLOR_ERROR)
+        updateStatus("No targets found in loaded models. Forcing re-search in 0.5s. (Searching for Minigame Houses)", COLOR_ERROR)
         shouldRecacheTargets = true -- Force re-search in the next loop iteration
-        task.wait(5)
-        return -- Replaces the old 'goto next_loop'
+        task.wait(0.5) -- Faster retry for finding targets in the loaded world
+        return 
     end
 
     updateStatus(string.format("Found %d targets. Starting teleport sequence (10s delay per target).", totalTargets), COLOR_INFO)
@@ -1119,7 +1144,6 @@ end
 
 -- Main teleport loop logic
 local function teleportLoop()
-    local rootSearchArea = workspace:FindFirstChild("Interiors")
     
     -- ** BEGIN INFINITE TELEPORT LOOP **
     while true do
@@ -1138,9 +1162,11 @@ local function teleportLoop()
         
         -- 2. PAUSE BLOCK: Wait here if the operational status is OFF (either manual or timer)
         while not isTeleporting do task.wait(0.1) end 
+        
+        -- 3. Get the root search area here on every iteration (in case it loads late)
+        local rootSearchArea = workspace:FindFirstChild("Interiors")
 
-        -- 3. Execute the core logic block (This replaces the large section with GOTO/LABELS)
-        -- The nested function will return if it needs to skip to the next iteration.
+        -- 4. Execute the core logic block (The function handles the small retry waits)
         executeTeleportStep(rootSearchArea, currentHRP)
     end
     -- ** END INFINITE TELEPORT LOOP **
