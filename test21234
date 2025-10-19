@@ -545,15 +545,18 @@ task.wait(3)
 
 
 
+
+
+
+
 --[[
     Roblox Teleporter Script - Configuration and Core Logic
     This script is designed to perform safe, timed teleportation and concurrent model manipulation
     to assist with minigame grinding.
     
-    *** FIX APPLIED: Removed all 'goto' statements to eliminate "Incomplete statement" error.
-    The main logic now uses a nested function to control flow robustly.
-    *** UPDATE: UI now parents itself to the existing 'HauntletFarmUI.MainFrame.ContentFrame'
-        if available, allowing it to move with the main GUI. Position adjusted for new parent.
+    *** FIX APPLIED: Added a robust `WaitForChild` mechanism to ensure the custom UI is
+        always parented correctly to `HauntletFarmUI.MainFrame.ContentFrame`, waiting
+        for the game's GUI to appear if necessary.
 ]]
 
 -- =================================================================================
@@ -670,23 +673,35 @@ local function clickButton(button)
     end
 end
 
--- --- NATIVE STATUS UI CREATION (Redesigned to parent to existing UI) ---
+-- --- NATIVE STATUS UI CREATION (Redesigned to parent to existing UI with waiting) ---
 local function createNativeDoorStatusUI()
     local playerGui = player.PlayerGui
-    
-    -- Attempt to find the target parent frame
-    local targetParentFrame = playerGui:FindFirstChild("HauntletFarmUI", true)
-    targetParentFrame = targetParentFrame and targetParentFrame:FindFirstChild("MainFrame")
-    targetParentFrame = targetParentFrame and targetParentFrame:FindFirstChild("ContentFrame")
-
     local parentInstance = nil
     
-    if targetParentFrame and targetParentFrame:IsA("Frame") then
-        print("[STATUS] Found HauntletFarmUI parent. Inserting Teleporter UI inside.")
-        -- If target parent is found, we use it directly and do not create a ScreenGui
+    -- --- ROBUST WAIT FOR PARENT UI ---
+    local hauntletUI = playerGui:FindFirstChild("HauntletFarmUI")
+    if not hauntletUI then
+        updateStatus("Waiting for HauntletFarmUI...", COLOR_SEARCH)
+        hauntletUI = playerGui:WaitForChild("HauntletFarmUI", 60) -- Wait up to 60 seconds for the top-level UI
+    end
+    
+    local targetParentFrame = nil
+    
+    if hauntletUI then
+        -- Attempt to find the full path using WaitForChild for deeper elements
+        local mainFrame = hauntletUI:WaitForChild("MainFrame", 10)
+        local contentFrame = mainFrame and mainFrame:WaitForChild("ContentFrame", 10)
+        
+        if contentFrame and contentFrame:IsA("Frame") then
+            print("[STATUS] Found HauntletFarmUI parent. Inserting Teleporter UI inside.")
+            targetParentFrame = contentFrame
+        end
+    end
+
+    if targetParentFrame then
         parentInstance = targetParentFrame
     else
-        print("[STATUS] HauntletFarmUI parent not found. Creating local ScreenGui.")
+        print("[STATUS] HauntletFarmUI parent path not found or timed out. Creating local ScreenGui.")
         -- Fallback: Create a local ScreenGui if the target is missing or corrupted
         local ScreenGui = Instance.new("ScreenGui")
         ScreenGui.Name = "TeleporterUI"
@@ -709,10 +724,10 @@ local function createNativeDoorStatusUI()
     
     -- Size and Positioning Logic
     if parentInstance.ClassName == "ScreenGui" then
-        -- If parented to ScreenGui (Fallback, old behavior)
+        -- If parented to ScreenGui (Fallback, old behavior - bottom left)
         MainFrame.Size = UDim2.new(0.3, 0, 0.08, 0) -- Original size
         MainFrame.AnchorPoint = Vector2.new(0, 1)   -- Original anchor
-        MainFrame.Position = UDim2.new(0.05, 0, 0.95, 0) -- Original position (bottom-left)
+        MainFrame.Position = UDim2.new(0.05, 0, 0.95, 0) -- Original position
     else
         -- If parented to existing Frame (New behavior - make it flexible/vertical)
         MainFrame.Size = UDim2.new(1, 0, 0.35, 0) -- Takes 100% width, 35% height of the ContentFrame
@@ -723,9 +738,6 @@ local function createNativeDoorStatusUI()
         verticalLayout.FillDirection = Enum.FillDirection.Vertical
         verticalLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
         verticalLayout.Parent = MainFrame
-        
-        -- Add UIGridLayout to the ContentFrame if it doesn't exist, to manage children
-        -- NOTE: We rely on the existing UI handling this, but adding a list layout to our frame is safer.
     end
     
     -- Add UICorner for rounded look
@@ -1219,6 +1231,8 @@ else
     player.CharacterAdded:Wait() 
     startTeleport()
 end
+
+
 
 
 
