@@ -1,0 +1,640 @@
+--[[
+    Roblox Teleporter Script - Configuration and Core Logic
+    
+    *** CRITICAL UI FIX APPLIED: The UI creation logic has been split into a dedicated, 
+        permanent background thread (`uiParentMonitor`) that uses a continuous loop 
+        to ensure the custom UI is always parented correctly to the HauntletFarmUI
+        when it exists, or to a fallback ScreenGui otherwise.
+]]
+
+-- =================================================================================
+--                              CONFIGURATION SECTION
+-- =================================================================================
+
+-- Teleport Targets
+local TARGET_PART_NAME = "DoorDressing"
+local TELEPORT_DELAY = 10 -- Time in seconds to wait between teleports (Set to 10s for safety)
+
+-- Timer Safety (New Centralized Configuration)
+local MIN_STOP_TIME_MMSS = "00:30" -- The time (MM:SS) at which teleporting MUST stop (e.g., "00:30")
+local MIN_SAFE_TIME_SECONDS = 31   -- Automatically calculated as the second *after* the stop time
+
+-- Exclusion List (Interiors to skip for DoorDressing targets)
+local EXCLUDED_INTERIOR_NAMES_SET = {
+    ["MainMap!Fall"] = true,
+}
+
+-- Configuration for Model Mover and Intermittent Teleport
+local TARGET_INTERIOR_NAME = "SleepOrTreatInterior::" -- Prefix for dynamic searching
+local TARGET_MODEL_NAME = "Sandman"
+local MODEL_MOVE_POSITION = CFrame.new(0, 50000, 0) -- Moves the Sandman model 50,000 studs high
+local MODEL_MOVE_INTERVAL = 1.0 -- How often to re-move the model (every 1 second)
+
+-- =================================================================================
+--                            SERVICES AND INITIALIZATION
+-- =================================================================================
+
+-- Services/Instances
+local Players = game:GetService("Players")
+local workspace = game:GetService("Workspace")
+
+-- **ROBUST INITIALIZATION**
+local player = Players.LocalPlayer
+if not player then
+    print("Waiting for LocalPlayer...")
+    repeat task.wait(0.1) until Players.LocalPlayer
+    player = Players.LocalPlayer
+end
+
+-- Global UI Variables and State
+local DoorStatusLabel = nil       -- Reference to the TextLabel for status messages
+local TeleporterMainFrame = nil   -- Reference to the main Frame container
+local TeleportToggle = nil        -- Reference to the ON/OFF button
+local CloseButton = nil           -- Reference to the X button
+local FallbackScreenGui = nil     -- Reference to the ScreenGui used when HauntletUI is missing
+
+local isTeleporting = true        -- Operational status: true only if (Manual ON AND Timer NOT Low)
+local isManuallyToggledOn = true  -- New flag: Tracks the state of the UI button
+local teleportThread = nil        -- Reference to the main teleport loop thread
+local cachedTargets = {}          -- Stores the list of DoorDressing parts and their house names
+local shouldRecacheTargets = true -- Flag to force target recalculation on start/resume after minigame end
+
+-- Global UI Colors
+local COLOR_INFO = Color3.new(0.1, 0.4, 0.8)    -- Blue
+local COLOR_SUCCESS = Color3.new(0, 1, 0)       -- Green (for ON state)
+local COLOR_ERROR = Color3.new(1, 0, 0)         -- Red (for X button)
+local COLOR_SEARCH = Color3.new(0.8, 0.4, 0.1)   -- Orange/Yellowish
+local COLOR_PAUSED = Color3.new(0.5, 0.5, 0.5)  -- Gray (for OFF state)
+local COLOR_STATUS_BAR = Color3.new(0.1, 0.1, 0.1) -- Near Black for top bar
+
+
+-- =================================================================================
+--                                HELPER FUNCTIONS
+-- =================================================================================
+
+-- Helper function to update UI status and log to console
+local function updateStatus(message, color)
+    if DoorStatusLabel then
+        DoorStatusLabel.Text = message
+    end
+    print("[STATUS] " .. message)
+end
+
+-- Helper function to convert MM:SS string to total seconds
+local function parseTime(timeString)
+    local minutes, seconds = timeString:match("(%d+):(%d+)")
+    if minutes and seconds then
+        return tonumber(minutes) * 60 + tonumber(seconds)
+    end
+    return 0
+end
+
+-- Function to simulate click events (uses executor function 'getconnections')
+local function clickButton(button)
+    if not isTeleporting then return end -- Operational guard
+
+    if button and getconnections then
+        -- Full Mouse 1 Event Firing Sequence
+        for _, connection in pairs(getconnections(button.MouseButton1Down)) do
+            connection:Fire()
+        end
+        task.wait(0.1)
+        for _, connection in pairs(getconnections(button.MouseButton1Click)) do
+            connection:Fire()
+        end
+        task.wait(0.1)
+        for _, connection in pairs(getconnections(button.MouseButton1Up)) do
+            connection:Fire()
+        end
+    elseif button then
+        button:Click() 
+    end
+end
+
+-- --- UI ELEMENT CREATION (Runs ONCE at startup) ---
+local function createDoorUIElements()
+    
+    -- 1. Create Fallback ScreenGui (Always exists in PlayerGui)
+    FallbackScreenGui = Instance.new("ScreenGui")
+    FallbackScreenGui.Name = "TeleporterFallbackUI"
+    FallbackScreenGui.DisplayOrder = 999 
+    FallbackScreenGui.Enabled = true
+    FallbackScreenGui.Parent = player.PlayerGui
+    
+    -- 2. Create Main Frame
+    TeleporterMainFrame = Instance.new("Frame")
+    TeleporterMainFrame.Name = "TeleporterMainFrame"
+    TeleporterMainFrame.BackgroundColor3 = Color3.new(0.05, 0.05, 0.05) 
+    TeleporterMainFrame.BorderSizePixel = 0
+    
+    -- Set default size/position for fallback mode (bottom left)
+    TeleporterMainFrame.Size = UDim2.new(0.3, 0, 0.08, 0)
+    TeleporterMainFrame.AnchorPoint = Vector2.new(0, 1)
+    TeleporterMainFrame.Position = UDim2.new(0.05, 0, 0.95, 0)
+    
+    -- Add UICorner for rounded look
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = TeleporterMainFrame
+    
+    -- 3. Top Status Bar (Black)
+    DoorStatusLabel = Instance.new("TextLabel")
+    DoorStatusLabel.Name = "StatusLabel"
+    DoorStatusLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    DoorStatusLabel.Position = UDim2.new(0, 0, 0, 0)
+    DoorStatusLabel.Text = "Initializing..." 
+    DoorStatusLabel.Font = Enum.Font.SourceSansBold
+    DoorStatusLabel.TextColor3 = Color3.new(1, 1, 1)
+    DoorStatusLabel.TextSize = 18
+    DoorStatusLabel.BackgroundTransparency = 0.0
+    DoorStatusLabel.BackgroundColor3 = COLOR_STATUS_BAR
+    DoorStatusLabel.BorderSizePixel = 0
+    DoorStatusLabel.TextWrapped = true
+    DoorStatusLabel.Parent = TeleporterMainFrame
+    
+    -- 4. Bottom Button Frame (Container for the two large buttons)
+    local ButtonFrame = Instance.new("Frame")
+    ButtonFrame.Name = "ButtonFrame"
+    ButtonFrame.Size = UDim2.new(1, 0, 0.5, 0)
+    ButtonFrame.Position = UDim2.new(0, 0, 0.5, 0)
+    ButtonFrame.BackgroundTransparency = 1.0
+    ButtonFrame.Parent = TeleporterMainFrame
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Padding = UDim.new(0, 0) 
+    UIListLayout.FillDirection = Enum.FillDirection.Horizontal
+    UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    UIListLayout.Parent = ButtonFrame
+    
+    -- 5. TELEPORT: ON/OFF Button
+    TeleportToggle = Instance.new("TextButton")
+    TeleportToggle.Name = "TeleportToggle"
+    TeleportToggle.Size = UDim2.new(0.75, 0, 1, 0)
+    TeleportToggle.Text = "TELEPORT: ON"
+    TeleportToggle.Font = Enum.Font.SourceSansBold
+    TeleportToggle.TextColor3 = Color3.new(0, 0, 0)
+    TeleportToggle.TextSize = 20
+    TeleportToggle.BackgroundColor3 = COLOR_SUCCESS
+    TeleportToggle.BorderSizePixel = 0
+    Instance.new("UICorner", TeleportToggle).CornerRadius = UDim.new(0, 8)
+    TeleportToggle.Parent = ButtonFrame
+    
+    -- 6. X Button
+    CloseButton = Instance.new("TextButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Size = UDim2.new(0.25, 0, 1, 0)
+    CloseButton.Text = "X"
+    CloseButton.Font = Enum.Font.SourceSansBold
+    CloseButton.TextColor3 = Color3.new(1, 1, 1)
+    CloseButton.TextSize = 28
+    CloseButton.BackgroundColor3 = COLOR_ERROR
+    CloseButton.BorderSizePixel = 0
+    Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(0, 8)
+    CloseButton.Parent = ButtonFrame
+    
+    -- Initially parent to fallback GUI
+    TeleporterMainFrame.Parent = FallbackScreenGui
+end
+
+
+-- --- NEW: CONTINUOUS UI PARENT MONITOR ---
+local function uiParentMonitor()
+    
+    -- Cache the necessary properties/layouts to apply when parenting to HauntletUI
+    local HAUNTLET_SIZE = UDim2.new(1, 0, 0.35, 0)
+    local HAUNTLET_POS = UDim2.new(0, 0, 0, 0)
+    local verticalLayout = Instance.new("UIListLayout")
+    verticalLayout.FillDirection = Enum.FillDirection.Vertical
+    verticalLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    
+    updateStatus("UI Parent Monitor started (Continuous search for HauntletUI).", COLOR_SEARCH)
+    
+    while true do
+        task.wait(0.5) -- Check every half second
+        
+        -- 1. Try to find the target parent frame inside HauntletFarmUI
+        local hauntletUI = player.PlayerGui:FindFirstChild("HauntletFarmUI")
+        local targetParentFrame = hauntletUI and hauntletUI:FindFirstChild("MainFrame", true) 
+                                and hauntletUI.MainFrame:FindFirstChild("ContentFrame")
+        
+        if targetParentFrame and targetParentFrame:IsA("Frame") then
+            
+            -- *** Target Parent FOUND ***
+            
+            -- Check if our UI is already correctly parented
+            if TeleporterMainFrame.Parent ~= targetParentFrame then
+                print("[UI_MONITOR] HauntletUI found! Re-parenting custom UI.")
+                
+                -- Apply Hauntlet-specific sizing/layout
+                TeleporterMainFrame.Size = HAUNTLET_SIZE
+                TeleporterMainFrame.Position = HAUNTLET_POS
+                
+                -- Remove any existing layout (to be safe)
+                if TeleporterMainFrame:FindFirstChildOfClass("UIListLayout") then
+                    TeleporterMainFrame:FindFirstChildOfClass("UIListLayout"):Destroy()
+                end
+                
+                -- Add the required vertical layout for stacking within the ContentFrame
+                if not TeleporterMainFrame:FindFirstChild("VerticalLayout") then
+                    verticalLayout:Clone().Parent = TeleporterMainFrame
+                end
+                
+                -- Set the new parent
+                TeleporterMainFrame.Parent = targetParentFrame
+                
+                -- Ensure the fallback ScreenGui is disabled
+                if FallbackScreenGui.Enabled then FallbackScreenGui.Enabled = false end
+            end
+            
+        else
+            
+            -- *** Target Parent NOT FOUND (or destroyed) ***
+            
+            -- Check if our UI is *not* currently parented to the fallback (meaning it was using HauntletUI)
+            if TeleporterMainFrame.Parent ~= FallbackScreenGui then
+                print("[UI_MONITOR] HauntletUI lost. Re-parenting custom UI to Fallback GUI.")
+                
+                -- Restore fallback sizing/positioning
+                TeleporterMainFrame.Size = UDim2.new(0.3, 0, 0.08, 0)
+                TeleporterMainFrame.AnchorPoint = Vector2.new(0, 1)
+                TeleporterMainFrame.Position = UDim2.new(0.05, 0, 0.95, 0)
+                
+                -- Remove the vertical layout used for HauntletUI
+                if TeleporterMainFrame:FindFirstChildOfClass("UIListLayout") then
+                    TeleporterMainFrame:FindFirstChildOfClass("UIListLayout"):Destroy()
+                end
+
+                -- Set the parent back to the fallback ScreenGui
+                TeleporterMainFrame.Parent = FallbackScreenGui
+                
+                -- Ensure the fallback ScreenGui is enabled
+                if not FallbackScreenGui.Enabled then FallbackScreenGui.Enabled = true end
+            end
+        end
+    end
+end
+
+-- Function to continuously monitor the minigame timer and control isTeleporting state
+local function timerMonitor()
+    updateStatus("Timer Monitor active.", COLOR_INFO)
+    
+    local requiredMinSafeSeconds = parseTime(MIN_STOP_TIME_MMSS) + 1
+
+    while task.wait(0.5) do
+        
+        -- --- DIRECT PATH TO VALUE LABEL ---
+        local valueLabel = player.PlayerGui:FindFirstChild("MinigameInGameApp", true)
+        valueLabel = valueLabel and valueLabel:FindFirstChild("Body", true)
+        valueLabel = valueLabel and valueLabel:FindFirstChild("Left")
+        valueLabel = valueLabel and valueLabel:FindFirstChild("Container")
+        valueLabel = valueLabel and valueLabel:FindFirstChild("ValueLabel")
+        
+        -- --- HANDLE UI TOGGLE APPEARANCE ---
+        if TeleportToggle and TeleportToggle:IsA("GuiButton") then
+            if isManuallyToggledOn then
+                TeleportToggle.Text = "TELEPORT: ON"
+                TeleportToggle.BackgroundColor3 = COLOR_SUCCESS
+            else
+                TeleportToggle.Text = "TELEPORT: OFF"
+                TeleportToggle.BackgroundColor3 = COLOR_PAUSED
+            end
+        end
+        
+        -- If user manually paused, keep operational status paused and skip timer check
+        if not isManuallyToggledOn then
+            if isTeleporting then isTeleporting = false end
+            updateStatus("Teleporting PAUSED by user (Manual).", COLOR_PAUSED)
+            continue
+        end
+        
+        -- --- TIMER LOGIC (Only runs if isManuallyToggledOn is true) ---
+        if valueLabel and valueLabel.Visible and valueLabel.Text then
+            local timeText = valueLabel.Text
+            local totalSeconds = parseTime(timeText)
+            
+            if totalSeconds < requiredMinSafeSeconds and totalSeconds >= 0 then
+                -- PAUSE: Timer is low (e.g., 00:30 or less)
+                if isTeleporting then
+                    isTeleporting = false
+                    shouldRecacheTargets = true 
+                    updateStatus(string.format("TIMER LOW: %s. Teleports paused (Stop at %s).", timeText, MIN_STOP_TIME_MMSS), COLOR_ERROR)
+                end
+            elseif totalSeconds >= requiredMinSafeSeconds then
+                -- RESUME: Time is safe (e.g., 00:31 or more)
+                if not isTeleporting then
+                    isTeleporting = true
+                    shouldRecacheTargets = true
+                    updateStatus(string.format("TIMER SAFE: %s. Teleports resumed. Starting search/teleport.", timeText), COLOR_SUCCESS)
+                end
+            end
+            
+        elseif not valueLabel and isManuallyToggledOn then
+            -- RESUME: Minigame GUI is gone (meaning minigame is over or hasn't started)
+            if not isTeleporting then
+                isTeleporting = true
+                shouldRecacheTargets = true 
+                updateStatus("Minigame ended/unstarted. Teleports resumed. Will search for new interior.", COLOR_SUCCESS)
+            end
+        end
+    end
+end
+
+-- Function to continuously find and click the target GUI button
+local function infiniteClicker()
+    updateStatus("Sandman/Knock Clicker thread started.", COLOR_SUCCESS)
+    
+    while task.wait(0.5) do
+        if not isTeleporting then continue end
+
+        -- 1. Sandman Sleep Button
+        local sandmanButton = player.PlayerGui:FindFirstChild("SandmanApp", true)
+        sandmanButton = sandmanButton and sandmanButton:FindFirstChild("Background", true)
+        sandmanButton = sandmanButton and sandmanButton:FindFirstChild("Sleep", true)
+        sandmanButton = sandmanButton and sandmanButton:FindFirstChild("Button")
+        
+        if sandmanButton and sandmanButton:IsA("GuiButton") and sandmanButton.Visible then
+            clickButton(sandmanButton)
+            continue
+        end
+
+        -- 2. Minigame Knock Button
+        local knockButton = player.PlayerGui:FindFirstChild("MinigameHotbarApp", true)
+        knockButton = knockButton and knockButton:FindFirstChild("Hotbar", true)
+        knockButton = knockButton and knockButton:FindFirstChild("Knock", true)
+        knockButton = knockButton and knockButton:FindFirstChild("Button")
+
+        if knockButton and knockButton:IsA("GuiButton") and knockButton.Visible then
+            clickButton(knockButton)
+        end
+    end
+end
+
+-- Function to continuously move a specific model far away
+local function infiniteModelMover()
+    updateStatus("Model Mover (Sandman) thread started.", COLOR_INFO)
+    
+    while task.wait(MODEL_MOVE_INTERVAL) do
+        local interior = nil
+        local interiors = workspace:FindFirstChild("Interiors")
+        
+        if interiors then
+            for _, child in pairs(interiors:GetChildren()) do
+                if child:IsA("Model") and child.Name:sub(1, #TARGET_INTERIOR_NAME) == TARGET_INTERIOR_NAME then
+                    interior = child
+                    break
+                end
+            end
+        end
+        
+        if interior then
+            for _, model in ipairs(interior:GetDescendants()) do
+                if model.Name == TARGET_MODEL_NAME and model:IsA("Model") then
+                    if model.PrimaryPart then
+                        model:SetPrimaryPartCFrame(MODEL_MOVE_POSITION)
+                    else
+                        local modelCenter = model:GetBoundingBox().p
+                        for _, part in ipairs(model:GetChildren()) do
+                            if part:IsA("BasePart") then
+                                part.CFrame = MODEL_MOVE_POSITION * CFrame.new(part.Position - modelCenter)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Helper function to find the specific fixed Ring target
+local function findRingTarget()
+    local interior = nil
+    local interiors = workspace:FindFirstChild("Interiors")
+    
+    if not interiors then return nil end
+    
+    for _, child in pairs(interiors:GetChildren()) do
+        if child:IsA("Model") and child.Name:sub(1, #TARGET_INTERIOR_NAME) == TARGET_INTERIOR_NAME then
+            interior = child
+            break
+        end
+    end
+    
+    if not interior then return nil end
+    
+    local target = interior:FindFirstChild("Visual", true)
+    target = target and target:FindFirstChild("TreatDash_V1", true)
+    target = target and target:FindFirstChild("CandyBasketMain", true)
+    target = target and target:FindFirstChild("CandyZone", true)
+    target = target and target:FindFirstChild("Ring")
+    
+    if target and target:IsA("BasePart") then
+        return target
+    end
+    return nil
+end
+
+-- Function to find and filter the main DoorDressing targets
+local function findAndFilterTargets(rootSearchArea)
+    local validTargets = {}
+
+    if not rootSearchArea then
+        updateStatus("Error: 'Interiors' folder not found. Waiting for it to appear...", COLOR_ERROR)
+        return validTargets
+    end
+    
+    updateStatus(string.format("Found %d Interior Models. Searching for specific DoorDressing paths...", #rootSearchArea:GetChildren()), COLOR_INFO) 
+    
+    for _, interiorModel in pairs(rootSearchArea:GetChildren()) do
+        if interiorModel:IsA("Model") and not EXCLUDED_INTERIOR_NAMES_SET[interiorModel.Name] then
+            
+            local pHouses = interiorModel:FindFirstChild("PlotHouses")
+            
+            if pHouses then
+                for _, house in pairs(pHouses:GetChildren()) do
+                    if house:IsA("Model") and house.Name:match("^House_%d+$") then
+                        local doors = house:FindFirstChild("Doors")
+                        local mainDoor = doors and doors:FindFirstChild("MainDoor")
+                        local door = mainDoor and mainDoor:FindFirstChild("Door")
+                        local doorDressing = door and door:FindFirstChild(TARGET_PART_NAME)
+                        
+                        if doorDressing and doorDressing:IsA("BasePart") then
+                            table.insert(validTargets, {
+                                part = doorDressing,
+                                houseName = house.Name
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return validTargets
+end
+
+-- Core logic function to be called once per while loop iteration.
+local function executeTeleportStep(rootSearchArea, currentHRP)
+    
+    -- --- TARGET FINDING AND CACHING LOGIC (RE-SEARCH) ---
+    if shouldRecacheTargets then
+        
+        if not rootSearchArea then
+            updateStatus("Error: 'Interiors' folder not found. Retrying search in 0.5s.", COLOR_ERROR)
+            task.wait(0.5)
+            return
+        end
+        
+        if #rootSearchArea:GetChildren() == 0 then
+            updateStatus("Recaching: Waiting for new interior models to load (0.5s retry)...", COLOR_SEARCH)
+            task.wait(0.5)
+            return
+        end
+
+        cachedTargets = findAndFilterTargets(rootSearchArea)
+        shouldRecacheTargets = false
+    end
+    
+    local totalTargets = #cachedTargets
+
+    if totalTargets == 0 then
+        updateStatus("No targets found in loaded models. Forcing re-search in 0.5s.", COLOR_ERROR)
+        shouldRecacheTargets = true
+        task.wait(0.5)
+        return 
+    end
+
+    updateStatus(string.format("Found %d targets. Starting teleport sequence (10s delay per target).", totalTargets), COLOR_INFO)
+
+    for i, targetInfo in ipairs(cachedTargets) do 
+        
+        while not isTeleporting do task.wait(0.1) end
+        
+        local target = targetInfo.part
+        local houseName = targetInfo.houseName
+        
+        -- 1. Teleport to the DoorDressing Target
+        local targetPosition = target.CFrame.p + Vector3.new(0, 5, 0)
+
+        currentHRP.CFrame = CFrame.new(targetPosition)
+        
+        local humanoid = currentHRP.Parent:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.PlatformStand = true
+            task.wait(0.2) 
+            humanoid.PlatformStand = false
+        end
+
+        local interiorModelName = "Unknown Interior"
+        local currentAncestor = target.Parent
+        while currentAncestor and currentAncestor.Parent ~= workspace.Interiors do
+            currentAncestor = currentAncestor.Parent
+        end
+        
+        if currentAncestor and currentAncestor.Parent == workspace.Interiors then
+            interiorModelName = currentAncestor.Name
+        end
+        
+        local statusMessage = string.format("[%d/%d] Teleporting to %s, Interior: %s", 
+            i, totalTargets, houseName, interiorModelName)
+            
+        updateStatus(statusMessage, COLOR_INFO)
+
+        task.wait(TELEPORT_DELAY)
+
+        -- 2. NEW: Teleport to the RING TARGET after every DoorDressing teleport
+        while not isTeleporting do task.wait(0.1) end
+        
+        local ringTarget = findRingTarget()
+        
+        if ringTarget then
+            local ringPosition = ringTarget.CFrame.p + Vector3.new(0, 5, 0)
+            currentHRP.CFrame = CFrame.new(ringPosition)
+            
+            if humanoid then
+                humanoid.PlatformStand = true
+                task.wait(0.2) 
+                humanoid.PlatformStand = false
+            end
+            
+            updateStatus("JUMPED TO CandyZone Ring! Resuming main path.", COLOR_SUCCESS)
+            task.wait(0.5)
+        end
+    end
+
+    updateStatus(string.format("Batch of %d targets complete. Restarting sequence in 5 seconds.", totalTargets), COLOR_INFO)
+    task.wait(5)
+end
+
+-- Main teleport loop logic
+local function teleportLoop()
+    while true do
+        
+        local currentCharacter = player.Character or player.CharacterAdded:Wait()
+        local currentHRP = currentCharacter:FindFirstChild("HumanoidRootPart")
+
+        while not currentHRP do
+            updateStatus("Waiting for HumanoidRootPart to load...", COLOR_SEARCH)
+            task.wait(0.5)
+            currentCharacter = player.Character or player.CharacterAdded:Wait()
+            currentHRP = currentCharacter:FindFirstChild("HumanoidRootPart")
+        end
+        
+        while not isTeleporting do task.wait(0.1) end 
+        
+        local rootSearchArea = workspace:FindFirstChild("Interiors")
+
+        executeTeleportStep(rootSearchArea, currentHRP)
+    end
+end
+
+-- Entry point: Sets up UI and starts concurrent tasks
+local function startTeleport()
+    
+    -- 1. Create all UI elements once
+    createDoorUIElements() 
+    
+    -- 2. Set up UI connections using the global references
+    CloseButton.MouseButton1Click:Connect(function()
+        isManuallyToggledOn = false
+        isTeleporting = false
+        
+        if teleportThread then
+            task.cancel(teleportThread)
+        end
+        
+        -- Destroy the MainFrame, which will remove it from whichever parent it is currently using.
+        TeleporterMainFrame:Destroy() 
+        FallbackScreenGui:Destroy()
+        
+        print("[STATUS] Teleporter script STOPPED by user.")
+    end)
+    
+    TeleportToggle.MouseButton1Click:Connect(function()
+        isManuallyToggledOn = not isManuallyToggledOn
+        
+        if not isManuallyToggledOn then
+            isTeleporting = false
+        end
+    end)
+
+    updateStatus("Script Initialized. Starting background services...", COLOR_INFO)
+
+    -- 3. Start concurrent, permanent monitor threads
+    task.spawn(uiParentMonitor)      -- NEW: Continuous UI parenting monitor
+    task.spawn(infiniteModelMover)
+    task.spawn(infiniteClicker)
+    task.spawn(timerMonitor)
+    
+    -- 4. Start the main teleport loop
+    teleportThread = task.spawn(teleportLoop)
+    updateStatus("Starting infinite teleport loop...", COLOR_INFO)
+end
+
+-- Run the script
+if player.Character then
+    startTeleport()
+else
+    player.CharacterAdded:Wait() 
+    startTeleport()
+end
