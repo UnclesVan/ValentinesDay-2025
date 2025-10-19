@@ -1,1554 +1,1634 @@
-
-
-
-local Fsys = require(game.ReplicatedStorage:WaitForChild("Fsys")).load
-
--- Get the init function from RouterClient
-local initFunction = Fsys("RouterClient").init
-
--- Folder containing the remotes to track
-local remoteFolder = game.ReplicatedStorage:WaitForChild("API")
-
--- A flag to ensure we print only once during the initial scan
-local printedOnce = false
-
--- Function to inspect upvalues and identify remotes
-local function inspectUpvalues()
-    local remotes = {}  -- Table to collect remotes
-
-    for i = 1, math.huge do
-        local success, upvalue = pcall(getupvalue, initFunction, i)
-        if not success then
-            break
-        end
-        
-        -- If the upvalue is a table, let's check its contents
-        if typeof(upvalue) == "table" then
-            for k, v in pairs(upvalue) do
-                -- Check for RemoteEvents, RemoteFunctions, BindableEvents, and BindableFunctions
-                if typeof(v) == "Instance" then
-                    if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") or v:IsA("BindableEvent") or v:IsA("BindableFunction") then
-                        -- Log the key, type of value, and value
-                        table.insert(remotes, {key = k, remote = v})
-                        -- If it's the first time scanning, print remote information
-                        if not printedOnce then
-                            print("Key: " .. k .. " Type: " .. typeof(k) .. ", Value Type: " .. typeof(v))
-                            print("Found remote: " .. v:GetFullName())
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    return remotes
-end
-
--- Function to rename remotes based on their key
-local function rename(remote, key)
-    local nameParts = string.split(key, "/")  -- Split the key by "/"
-    if #nameParts > 1 then
-        local remotename = table.concat(nameParts, "/", 1, 2)  -- Join the first two parts
-        remote.Name = remotename
-    else
-        warn("Invalid key format for remote: " .. key)  -- Notify if the key format is incorrect
-    end
-end
-
--- Function to rename all existing remotes in the folder
-local function renameExistingRemotes()
-    local remotes = inspectUpvalues()
-
-    -- Rename all collected remotes based on the key
-    for _, entry in ipairs(remotes) do
-        rename(entry.remote, entry.key)
-    end
-end
-
--- Function to display dehashed message
-local function displayDehashedMessage()
-    local uiElement = game:GetService("Players").LocalPlayer.PlayerGui.HintApp.LargeTextLabel
-    uiElement.Text = "Remotes has been Dehashed!"
-    uiElement.TextColor3 = Color3.fromRGB(0, 255, 0)  -- Set text color to green
-    wait(3)
-    uiElement.Text = ""
-    uiElement.TextColor3 = Color3.fromRGB(255, 255, 255)  -- Reset text color to default (white)
-end
-
--- Monitor for new remotes added to the folder
-local function monitorForNewRemotes()
-    remoteFolder.ChildAdded:Connect(function(child)
-        if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") or child:IsA("BindableEvent") or child:IsA("BindableFunction") then
-            print("New remote added: " .. child:GetFullName())
-            -- Check and rename the new remote
-            local remotes = inspectUpvalues()
-            for _, entry in ipairs(remotes) do
-                rename(entry.remote, entry.key)
-            end
-        end
-    end)
-end
-
--- Coroutine for periodic check without freezing
-local function periodicCheck()
-    while true do
-        task.wait(10)  -- Check every 10 seconds (can adjust based on your needs)
-        -- Scan and rename existing remotes periodically
-        pcall(renameExistingRemotes)
-    end
-end
-
--- Start the periodic check in a coroutine (non-blocking)
-coroutine.wrap(periodicCheck)()
-
--- Initial scan and rename for all existing remotes (print once)
-renameExistingRemotes()
-
--- Display dehashed message
-displayDehashedMessage()
-
--- Set the flag to prevent printing more than once
-printedOnce = true
-
-print("Script initialized and monitoring remotes.")
-
-
-
-
-
-
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
-
--- A lookup table for pet names. Add more species IDs here for readability!
-local PetNames = {
-    starter_egg_2025_mouse = "2025 Mouse Pet",
-    practice_dog = "Practice Dog",
-    cat = "Cat",
-    halloween_2025_spider = "Halloween 2025 Spider",
-    basic_egg_2022_mouse = "Basic Egg 2022 Mouse",
-    -- Example format: pet_species_id = "Readable Pet Name",
-}
-
--- *** IMPORTANT: Replace this with the actual Item Type ID (kind) of the Age Potion ***
-local AGE_POTION_KIND = "pet_age_potion" 
-
--- Define the list of all buyable items (provided by user)
-local allBuyableItems = {
-    { id = "halloween_2025_aye_aye", category = "pets", defaultCount = 1, name = "Aye Aye" },
-    { id = "summerfest_2025_kelp_raider_box", category = "gifts", defaultCount = 1, name = "Kelp Raider Box" },
-    { id = "summerfest_2025_island_tarsier", category = "pets", defaultCount = 16, name = "Island Tarsier" },
-    { id = "summerfest_2025_manta_ray", category = "pets", defaultCount = 1, name = "Manta Ray" },
-    { id = "summerfest_2025_seabed_creeper", category = "pets", defaultCount = 16, name = "Seabed Creeper" },
-    { id = "summer_2025_emperor_shrump", category = "pets", defaultCount = 16, name = "Emperor Shrimp" },
-    { id = "summerfest_2025_coconut_friend", category = "pets", defaultCount = 3, name = "Coconut Friend" },
-    { id = "summerfest_2025_pirate_skull_vehicle", category = "transport", defaultCount = 1, name = "Pirate Skull Vehicle" },
-    { id = "summerfest_2025_pirate_row_boat", category = "transport", defaultCount = 1, name = "Pirate Row Boat" },
-    { id = "halloween_2025_spider_box", category = "gifts", defaultCount = 1, name = "Halloween Spider Box" },
-    { id = "halloween_2025_keyboard_leash", category = "accessories", defaultCount = 1, name = "Keyboard Leash" },
-    { id = "halloween_2025_haunted_piano", category = "furniture", defaultCount = 1, name = "Haunted Piano" },
-    { id = "halloween_2025_haunted_cupboard", category = "furniture", defaultCount = 1, name = "Haunted Cupboard" },
-    { id = "halloween_2025_haunted_sofa_set", category = "furniture", defaultCount = 1, name = "Haunted Sofa Set" },
-    { id = "halloween_2025_noob_voodoo_doll_chew_toy", category = "toys", defaultCount = 1, name = "Voodoo Doll Chew Toy" },
-    { id = "halloween_2025_stalagmite", category = "furniture", defaultCount = 1, name = "Stalagmite Decoration" },
-}
-
--- Table defining all the data sources to monitor for the Visual Tab.
-local MINIGAME_MONITOR_TARGETS = {
-    -- Minigame/Event Timers
-    {Name = "Quest Event Timer", Path = "QuestIconApp.ImageButton.EventContainer.EventFrame.EventImageBottom.EventTime", DataRootName = "PlayerGui"},
-    -- NOTE: Simplifying paths to assume the full name is the child name, removing Lua indexing notation
-    {Name = "Hauntlet Timer", Path = 'Interiors.MainMap!Fall.HauntletMinigameJoinZone.Billboard.BillboardGui.TimerLabel', DataRootName = "workspace"},
-    {Name = "Fashion Frenzy Timer", Path = 'Interiors.MainMap!Fall.FashionFrenzyJoinZone.Billboard.BillboardGui.TimerLabel', DataRootName = "workspace"},
-    -- Currency Indicators
-    {Name = "Alt Currency Amount", Path = "AltCurrencyIndicatorApp.CurrencyIndicator.Container.Amount", DataRootName = "PlayerGui"},
-    {Name = "Bucks Amount", Path = "BucksIndicatorApp.CurrencyIndicator.Container.Amount", DataRootName = "PlayerGui"},
-}
-
-local visualMonitorLabels = {} -- Stores references to the Fluent UI Paragraphs
-local visualMonitorTask = nil -- Initialize task variable
-local REFRESH_RATE = 0.5 -- Time in seconds between updates for the monitor
-
-local Window = Fluent:CreateWindow({
-    Title = "Fluent Hub",
-    SubTitle = "Custom Menu",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-})
-
-local Options = Fluent.Options
-
--- Define all tabs, including the new 'Event' tab
-local Tabs = {
-    Main = Window:AddTab({ Title = "Main", Icon = "home" }),
-    PetManagement = Window:AddTab({ Title = "Pet Management", Icon = "paw-print" }),
-    Visual = Window:AddTab({ Title = "Visual", Icon = "eye" }),
-    Utilities = Window:AddTab({ Title = "Utilities", Icon = "tool" }),
-    Shop = Window:AddTab({ Title = "Shop", Icon = "shopping-cart" }),
-    Event = Window:AddTab({ Title = "Event", Icon = "calendar-alt" }), -- NEW EVENT TAB
-    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
-}
-
--- Reference to the Pet Status Label
-local SelectedPetStatusLabel = nil
-
--- References to the local player and character
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local localPlayer = Players.LocalPlayer
+
+-- Wait until the ContentFrame inside your UI hierarchy exists
+local contentFrame = nil
+repeat
+    task.wait()
+    if localPlayer and localPlayer:FindFirstChild("PlayerGui") then
+        local playerGui = localPlayer.PlayerGui
+        local hauntletUI = playerGui:FindFirstChild("HauntletFarmUI")
+        if hauntletUI then
+            local mainFrame = hauntletUI:FindFirstChild("MainFrame")
+            if mainFrame then
+                contentFrame = mainFrame:FindFirstChild("ContentFrame")
+            end
+        end
+    end
+until contentFrame
+
+-- Now proceed with your main script code
+-- You can safely reference contentFrame here
+print("ContentFrame is now available:", contentFrame)
+
+-- Rest of your script, e.g., creating UI, starting loops, etc.
+
+
+
+
+
+-- Configuration
+local SCRIPT_ENABLED_DEFAULT = true -- The default initial state
+local IS_RUNNING = SCRIPT_ENABLED_DEFAULT -- Global variable to control the main loop
+
+local TELEPORT_DELAY = 0.2 -- Time in seconds to pause after each teleport (for 'stickiness')
+local SEARCH_INTERVAL = 3 -- Time in seconds to wait between search attempts
+local MARKER_SIZE = Vector3.new(3, 3, 3)
+local MARKER_COLOR = BrickColor.new("Really red")
+local TELEPORT_OFFSET_Y = 1 -- Studs above the ring to teleport to for a smooth landing
+
+-- Core Roblox services and objects
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") -- Ensure PlayerGui is waited for
-local ClientDataModule = require(ReplicatedStorage.ClientModules.Core.ClientData)
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- Global tables for data lookup and task tracking
-local petDisplayToStatus = {} -- Maps dropdown string to status text
-local petDisplayToUniqueId = {} -- Maps dropdown string to full unique pet ID
-local foodDisplayToUniqueId = {} -- Maps food dropdown string to full unique ID
-local giftDisplayToUniqueId = {} -- Maps gift display string back to unique ID
-local giftUniqueIdToDisplayString = {} -- Maps Gift Unique ID to display string (used for the Event Gift toggle)
+local currentTeleportIndex = 0
 
-local autoAgeTask = nil
-local autoOpenGiftTask = nil
-local autoEventTask = nil -- Task for auto-event loop
-local eventTargetGiftDropdown = nil -- Reference to the Event Gift Dropdown
+-- 1. Identify the search root as 'workspace.Interiors'
+local interiorsRoot = game.Workspace:FindFirstChild("Interiors")
 
--- Function to safely traverse a path and find the target object
-local function getObjectFromPath(root, path)
-    local current = root
-    -- Split by the dot separator.
-    local parts = string.split(path, ".")
-
-    for _, partName in ipairs(parts) do
-        local cleanedName = partName
-        
-        -- Try to strip common quoted/bracketed parts from bad path formats
-        local s, e, innerName = string.find(partName, '^%[?"(.-)"%]?$')
-        if innerName then
-            cleanedName = innerName
-        end
-
-        local child = current:FindFirstChild(cleanedName)
-        if not child then
-            return nil -- Path broken
-        end
-        current = child
-    end
-    return current
-end
-
--- Helper function to get the Humanoid
-local function getHumanoid()
-    local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    return Character:FindFirstChildOfClass("Humanoid")
-end
-
--- Function to wait for and retrieve player data
-local function waitForData()
-    local data = ClientDataModule.get_data()
-    local playerName = Players.LocalPlayer.Name
-    -- Wait until the data table is populated with the local player's key
-    while not data or not data[playerName] do
-        task.wait(0.5)
-        data = ClientDataModule.get_data()
-    end
-    return data
-end
-
-local function calculateAge(timestamp)
-    -- This function converts a Unix timestamp into a readable age string (Days, Hours, Minutes)
-    if type(timestamp) ~= "number" or timestamp <= 0 then
-        return "N/A (Invalid Timestamp)"
-    end
-
-    local SECONDS_IN_MINUTE = 60
-    local SECONDS_IN_HOUR = 3600
-    local SECONDS_IN_DAY = 86400
-
-    local currentTime = os.time()
-    local ageSeconds = math.floor(currentTime - timestamp)
-
-    if ageSeconds < 0 then
-        return "N/A (Future Timestamp)"
-    end
-
-    local days = math.floor(ageSeconds / SECONDS_IN_DAY)
-    local remainingSeconds = ageSeconds % SECONDS_IN_DAY
-
-    local hours = math.floor(remainingSeconds / SECONDS_IN_HOUR)
-    remainingSeconds = remainingSeconds % SECONDS_IN_HOUR
-
-    local minutes = math.floor(remainingSeconds / SECONDS_IN_MINUTE)
-
-    local ageString = ""
-    if days > 0 then
-        ageString = ageString .. days .. (days == 1 and " day" or " days")
-    end
-
-    if days == 0 or (days > 0 and hours > 0 and days < 10) then
-        if ageString ~= "" then ageString = ageString .. ", " end
-        ageString = ageString .. hours .. (hours == 1 and " hr" or " hrs")
-        if days == 0 then
-            ageString = ageString .. ", " .. minutes .. (minutes == 1 and " min" or " mins")
-        end
-    end
-
-    return ageString
-end
-
--- Helper function to capitalize and replace underscores/hyphens for readability
-local function formatItemName(rawName)
-    if not rawName or rawName == "" then return "Unknown Item" end
-    local formatted = string.gsub(rawName, "[_-]", " ")
-    formatted = string.gsub(formatted, "(%a)(%w*)", function(first, rest)
-        return string.upper(first) .. string.lower(rest)
-    end)
-    return formatted
-end
-
--- Function to parse the inventory data and return a list of food items
-local function getFoodInventoryList()
-    local foodItems = {"No Food Found (Retry Script)"}
-    local success, serverData = pcall(waitForData)
-    
-    foodDisplayToUniqueId = {} -- Clear previous unique ID mapping
-
-    if not success or not serverData then
-        warn("Failed to retrieve server data for food:", serverData)
-        return foodItems
-    end
-
-    local targetPlayerName = Players.LocalPlayer.Name
-    local playerData = serverData and serverData[targetPlayerName]
-    local TARGET_CATEGORY_PATH = playerData and playerData.inventory and playerData.inventory.food
-
-    if TARGET_CATEGORY_PATH and type(TARGET_CATEGORY_PATH) == "table" then
-        local categoryItems = TARGET_CATEGORY_PATH
-        local list = {}
-
-        for itemKey, itemData in pairs(categoryItems) do
-            local instanceId = itemKey
-            local typeId = itemKey
-            local itemQuantity = 1
-
-            if type(itemData) == "table" then
-                typeId = itemData.kind or itemData.id or itemKey
-                itemQuantity = itemData.count or itemData.quantity or itemData.amount or 1
-            elseif type(itemData) == "number" then
-                typeId = itemKey
-                itemQuantity = itemData
-            end
-
-            local readableName = formatItemName(typeId)
-
-            if itemQuantity > 0 then
-                local shortInstanceId = instanceId:sub(1, 8)
-                -- Display format: Formatted Name | Unique ID (xQuantity)
-                local displayString = string.format("%s | ID: %s (x%d)", readableName, shortInstanceId, itemQuantity)
-                table.insert(list, displayString)
-                
-                -- Populate the map for the Food Dropdown (using the FULL instance ID as the key)
-                foodDisplayToUniqueId[displayString] = instanceId
-            end
-        end
-
-        if #list > 0 then
-            return list
-        end
-    end
-
-    return foodItems
-end
-
--- Function to parse the inventory data and return a list of gift items (Used for both Utilities and Event tab)
-local function getGiftInventoryList()
-    local giftItems = {"No Gifts Found (Retry Script)"}
-    local success, serverData = pcall(waitForData)
-    
-    giftDisplayToUniqueId = {} -- Clear the gift reverse map
-    giftUniqueIdToDisplayString = {} -- Clear the forward map
-
-    if not success or not serverData then
-        warn("Failed to retrieve server data for gifts:", serverData)
-        return giftItems
-    end
-
-    local targetPlayerName = Players.LocalPlayer.Name
-    local playerData = serverData and serverData[targetPlayerName]
-    local TARGET_CATEGORY_PATH = playerData and playerData.inventory and playerData.inventory.gifts
-
-    if TARGET_CATEGORY_PATH and type(TARGET_CATEGORY_PATH) == "table" then
-        local categoryItems = TARGET_CATEGORY_PATH
-        local list = {}
-
-        for itemKey, itemData in pairs(categoryItems) do
-            local uniqueId = itemKey
-            local typeId = itemKey     
-            local itemQuantity = 1
-
-            if type(itemData) == "table" then
-                typeId = itemData.kind or itemData.id or itemKey
-                itemQuantity = itemData.count or itemData.quantity or itemData.amount or 1
-            elseif type(itemData) == "number" then
-                typeId = itemKey
-                itemQuantity = itemData
-            end
-
-            local readableName = formatItemName(typeId)
-
-            -- Add to the list only if quantity is greater than zero
-            if itemQuantity > 0 then
-                -- Display format: Formatted Name | Unique/Type ID (xQuantity)
-                local shortUniqueId = uniqueId:sub(1, 8)
-                local displayString = string.format("%s | ID: %s (x%d)", readableName, shortUniqueId, itemQuantity)
-                table.insert(list, displayString)
-                
-                -- Populate the maps
-                giftDisplayToUniqueId[displayString] = uniqueId
-                giftUniqueIdToDisplayString[uniqueId] = displayString
-            end
-        end
-
-        if #list > 0 then
-            table.sort(list) -- Sort for cleaner display
-            return list -- Return the actual list of items
-        end
-    end
-
-    return giftItems -- Return the default 'Not Found' message
-end
-
-
--- Function to find all unique IDs for a given item kind (Type ID)
-local function getItemDisplayStringsByKind(targetKind)
-    local displayStrings = {}
-    local success, serverData = pcall(waitForData)
-    
-    if not success or not serverData then
-        warn("Failed to retrieve server data for items:", serverData)
-        return displayStrings
-    end
-    
-    local targetPlayerName = Players.LocalPlayer.Name
-    local playerData = serverData and serverData[targetPlayerName]
-    local itemCategory = playerData and playerData.inventory and playerData.inventory.food -- Age potion is usually in 'food'
-
-    if itemCategory and type(itemCategory) == "table" then
-        for uniqueId, itemData in pairs(itemCategory) do
-            local itemKind = nil
-            local itemQuantity = 0
-
-            if type(itemData) == "table" then
-                itemKind = itemData.kind or itemData.id
-                itemQuantity = itemData.count or itemData.quantity or itemData.amount or 1
-            elseif type(itemData) == "number" then
-                itemKind = uniqueId
-                itemQuantity = itemData
-            end
-
-            -- Check if it matches the target kind and quantity is > 0
-            if itemKind and string.lower(itemKind) == string.lower(targetKind) and itemQuantity > 0 then
-                 -- Get the full display string from the food map
-                 local displayString = foodDisplayToUniqueId[formatItemName(itemKind) .. " | ID: " .. uniqueId:sub(1, 8) .. " (x" .. tostring(itemQuantity) .. ")"]
-                 if displayString then
-                    table.insert(displayStrings, displayString)
-                 end
-            end
-        end
-    end
-    return displayStrings
-end
-
--- Function to parse the pet data and return a list of pets
-local function getPetInventoryList()
-    local petItems = {"No Pets Found (Retry Script)"}
-    local success, serverData = pcall(waitForData)
-
-    -- Clear previous data
-    petDisplayToStatus = {}
-    petDisplayToUniqueId = {} 
-
-    if not success or not serverData then
-        warn("Failed to retrieve server data for pets:", serverData)
-        return petItems
-    end
-
-    local targetPlayerName = Players.LocalPlayer.Name
-    local playerData = serverData and serverData[targetPlayerName]
-    local TARGET_CATEGORY_PATH = playerData and playerData.inventory and playerData.inventory.pets
-
-    if TARGET_CATEGORY_PATH and type(TARGET_CATEGORY_PATH) == "table" then
-        local playerPets = TARGET_CATEGORY_PATH
-        local list = {}
-        local firstPetKey = next(playerPets)
-
-        for uniqueId, petData in pairs(playerPets) do
-            local speciesId = petData.id or "unknown_id"
-            local readableName = PetNames[speciesId] or string.gsub(speciesId, "_", " ")
-            local ageString = "Age Data Not Found"
-
-            local isAgeFound = false
-
-            local rawAgeValue = petData.properties and petData.properties.age
-            if type(rawAgeValue) == "number" and rawAgeValue >= 0 and rawAgeValue < 100000 then
-                ageString = "**Age Stage:** " .. tostring(rawAgeValue)
-                isAgeFound = true
-            end
-
-            if not isAgeFound then
-                local ageTimestamp = petData.created_timestamp or petData.birth_timestamp or petData.creation_timestamp or petData.created
-
-                if not ageTimestamp and petData.properties and type(petData.properties) == "table" then
-                    ageTimestamp = petData.properties.created_timestamp or petData.properties.birth_timestamp or petData.properties.created
-                end
-
-                if type(ageTimestamp) == "number" and ageTimestamp > 0 then
-                    ageString = "**Time Alive:** " .. calculateAge(ageTimestamp)
-                    isAgeFound = true
-                end
-            end
-
-            local shortUniqueId = uniqueId:sub(1, 8)
-            -- Pet Display Format: Name (ID: 2_xxxxxx)
-            local displayString = string.format("%s (ID: %s)", readableName, shortUniqueId)
-
-            local fullStatusString = string.format("**Pet:** %s\n**Unique ID:** %s\n%s", readableName, uniqueId, ageString)
-
-            table.insert(list, displayString)
-            petDisplayToStatus[displayString] = fullStatusString
-            petDisplayToUniqueId[displayString] = uniqueId
-        end
-
-        if #list > 0 then
-            table.sort(list)
-            return list
-        end
-    end
-
-    return petItems
-end
-
--- Function to get the full unique ID of the currently selected pet
-local function getSelectedPetUniqueId()
-    local selectedDisplay = Options.PetSelectorDropdown.Value
-    if not selectedDisplay or selectedDisplay == "No Pets Found (Error)" then
-        return nil
-    end
-    return petDisplayToUniqueId[selectedDisplay]
-end
-
--- Function to get the full unique ID of the currently selected food item
-local function getSelectedFoodUniqueId()
-    local selectedDisplay = Options.FoodInventoryDropdown.Value
-    if not selectedDisplay or selectedDisplay == "No Food Found (Error)" then
-        return nil
-    end
-    return foodDisplayToUniqueId[selectedDisplay]
-end
-
--- Function to get the full unique ID of the currently selected event gift
-local function getSelectedEventGiftUniqueId()
-    local selectedDisplay = Options.EventGiftDropdown.Value
-    if not selectedDisplay or selectedDisplay == "No Gifts Found (Error)" then
-        return nil
-    end
-    return giftDisplayToUniqueId[selectedDisplay]
-end
-
--- Shared function for equipping/using an item with ToolAPI/Equip
-local function attemptEquipItem(uniqueId, displayName)
-    if not uniqueId then return end
-    
-    local args = {
-        uniqueId,
-        {
-            use_sound_delay = false,
-            equip_as_last = false
-        }
-    }
-    
-    local success, result = pcall(function()
-        return game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("ToolAPI/Equip"):InvokeServer(unpack(args))
-    end)
-    
-    if success and result then
-        print(string.format("Equip SUCCESS for %s. ID: %s. Result:", displayName, uniqueId), result)
-    else
-        local errorMessage = success and "API returned unsuccessful status/nil result." or result
-        print(string.format("Equip FAILED for %s. ID: %s. Error:", displayName, uniqueId), errorMessage)
-    end
-end
+-- UI Element Holders (Global references for updating)
+local statusLabel = nil -- Used to display the current state/progress
+local toggleButton = nil -- Used to turn the main script ON/OFF
+local screenGui = nil
+local frame = nil -- Reference to the main draggable frame
 
 --------------------------------------------------------------------------------
--- 1. MAIN TAB CONTENT
+-- 🎮 UI Control Functions
 --------------------------------------------------------------------------------
-do
-    local MainTab = Tabs.Main
 
-    MainTab:AddParagraph({
-        Title = "Player Utilities",
-        Content = "Control movement and general features here."
-    })
-
-    -- WalkSpeed Multiplier
-    MainTab:AddSlider("WalkSpeed", {
-        Title = "WalkSpeed Multiplier",
-        Default = 16,
-        Min = 16,
-        Max = 100,
-        Rounding = 0,
-        Callback = function(Value)
-            local humanoid = getHumanoid()
-            if humanoid then
-                humanoid.WalkSpeed = Value
-            end
-            print("WalkSpeed set to:", Value)
-        end
-    })
-
-    -- Jump Power Multiplier
-    MainTab:AddSlider("JumpPower", {
-        Title = "Jump Power Multiplier",
-        Default = 50, -- Roblox default
-        Min = 50,
-        Max = 500,
-        Rounding = 0,
-        Callback = function(Value)
-            local humanoid = getHumanoid()
-            if humanoid then
-                humanoid.JumpPower = Value
-            end
-            print("JumpPower set to:", Value)
-        end
-    })
-
-    -- Additional space or a divider if needed
-    MainTab:AddParagraph({
-        Title = "",
-        Content = "---"
-    })
-
-    MainTab:AddParagraph({
-        Title = "Welcome!",
-        Content = "Use the tabs above to manage pets, shop, and visual settings."
-    })
+-- Function to update the status UI text
+local function updateStatus(text)
+    if statusLabel then
+        statusLabel.Text = text
+    end
 end
 
---------------------------------------------------------------------------------
--- 2. PET MANAGEMENT TAB CONTENT
---------------------------------------------------------------------------------
-do
-    local PetTab = Tabs.PetManagement
-
-    SelectedPetStatusLabel = PetTab:AddParagraph({
-        Title = "Selected Pet Status",
-        Content = "No pet selected."
-    })
-
-    -- Function to update the info labels based on the selected pet
-    local function updatePetStatusLabel(selectedPetDisplayString)
-        local statusContent = "No pet selected or data available."
-
-        if selectedPetDisplayString and selectedPetDisplayString ~= "No Pets Found (Retry Script)" then
-            statusContent = petDisplayToStatus[selectedPetDisplayString] or "Error: Pet data not found."
-            
-            -- *** NEW: ATTEMPT EQUIP CALL ON SELECTION ***
-            local uniqueId = petDisplayToUniqueId[selectedPetDisplayString]
-            attemptEquipItem(uniqueId, selectedPetDisplayString)
-        end
-
-        if SelectedPetStatusLabel and SelectedPetStatusLabel.SetContent then
-            SelectedPetStatusLabel:SetContent(statusContent)
+-- Function to update the main toggle button's appearance
+local function updateToggleButton()
+    if toggleButton then
+        if IS_RUNNING then
+            toggleButton.Text = "FARMING: ON (HAUNTLET)"
+            toggleButton.BackgroundColor3 = Color3.fromRGB(0, 180, 0) -- Green
+            updateStatus("Teleport System is **ON**. Searching for Hauntlet targets...")
         else
-            warn("Fluent UI Error: SelectedPetStatusLabel or its SetContent method is missing.")
+            toggleButton.Text = "FARMING: OFF"
+            toggleButton.BackgroundColor3 = Color3.fromRGB(180, 0, 0) -- Red
+            updateStatus("Teleport System is **OFF**. Click ON to start Hauntlet farm.")
+        end
+    end
+end
+
+-- Function to handle the ON/OFF toggle
+local function onToggleClicked()
+    IS_RUNNING = not IS_RUNNING
+    updateToggleButton()
+end
+
+-- Function to create the full UI
+local function createFullUI()
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
+    if screenGui and screenGui.Parent then return end
+
+    -- 1. Setup ScreenGui container
+    screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "HauntletFarmUI"
+    screenGui.Parent = playerGui
+
+    -- 2. Main Frame setup
+    frame = Instance.new("Frame")
+    frame.Name = "MainFrame"
+    frame.Size = UDim2.new(0.3, 0, 0.35, 0) -- Adjusted size for single toggle
+    frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    frame.AnchorPoint = Vector2.new(0.5, 0.5)
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    frame.BorderSizePixel = 0
+    frame.ClipsDescendants = true
+    frame.Parent = screenGui
+
+    local frameCorner = Instance.new("UICorner")
+    frameCorner.CornerRadius = UDim.new(0, 12)
+    frameCorner.Parent = frame
+
+    -- 3. Title Frame (Used for dragging)
+    local titleFrame = Instance.new("Frame")
+    titleFrame.Name = "TitleBar"
+    titleFrame.Size = UDim2.new(1, 0, 0.2, 0) 
+    titleFrame.Position = UDim2.new(0, 0, 0, 0)
+    titleFrame.BackgroundColor3 = Color3.fromRGB(55, 55, 75)
+    titleFrame.BorderSizePixel = 0
+    titleFrame.Parent = frame
+
+    -- Title Label
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Name = "TitleLabel"
+    titleLabel.Size = UDim2.new(0.9, 0, 1, 0)
+    titleLabel.Position = UDim2.new(0.05, 0, 0, 0)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLabel.Font = Enum.Font.SourceSansBold
+    titleLabel.Text = "Hauntlet Autofarm Controller"
+    titleLabel.TextSize = 20
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.Parent = titleFrame
+
+    -- Close Button (X)
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0.08, 0, 0.6, 0)
+    closeButton.Position = UDim2.new(0.95, 0, 0.5, 0)
+    closeButton.AnchorPoint = Vector2.new(1, 0.5)
+    closeButton.Text = "X"
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.TextSize = 18
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+    closeButton.BorderSizePixel = 0
+    closeButton.Parent = titleFrame
+
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 6)
+    buttonCorner.Parent = closeButton
+
+    closeButton.MouseButton1Click:Connect(function()
+        if screenGui then
+            IS_RUNNING = false
+            screenGui:Destroy()
+            screenGui = nil
+        end
+    end)
+    
+    -- 4. Content Container and Layout
+    local contentFrame = Instance.new("Frame")
+    contentFrame.Name = "ContentFrame"
+    contentFrame.Size = UDim2.new(1, 0, 0.8, 0)
+    contentFrame.Position = UDim2.new(0, 0, 0.2, 0)
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.Parent = frame
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0, 10)
+    padding.PaddingBottom = UDim.new(0, 10)
+    padding.PaddingLeft = UDim.new(0, 10)
+    padding.PaddingRight = UDim.new(0, 10)
+    padding.Parent = contentFrame
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.FillDirection = Enum.FillDirection.Vertical
+    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    listLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    listLayout.Padding = UDim.new(0, 10)
+    listLayout.Parent = contentFrame
+
+    -- 5. Status Label (main info display)
+    statusLabel = Instance.new("TextLabel")
+    statusLabel.Name = "StatusLabel"
+    statusLabel.LayoutOrder = 1
+    statusLabel.Size = UDim2.new(1, 0, 0, 50)
+    statusLabel.Text = "Initializing Teleport System..."
+    statusLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Font = Enum.Font.SourceSans
+    statusLabel.TextSize = 16
+    statusLabel.TextWrapped = true
+    statusLabel.Parent = contentFrame
+
+    -- 6. Main Toggle Button (FARMING)
+    toggleButton = Instance.new("TextButton")
+    toggleButton.Name = "ToggleButton"
+    toggleButton.LayoutOrder = 2
+    toggleButton.Size = UDim2.new(1, 0, 0, 45)
+    toggleButton.BackgroundColor3 = Color3.fromRGB(180, 0, 0) -- Initial color (Red)
+    toggleButton.Text = "FARMING: OFF"
+    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleButton.Font = Enum.Font.SourceSansBold
+    toggleButton.TextSize = 22
+    toggleButton.Parent = contentFrame
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 8)
+    toggleCorner.Parent = toggleButton
+    
+    toggleButton.MouseButton1Click:Connect(onToggleClicked)
+    
+    -- 7. Dragging functionality (connected to Title Bar)
+    local dragging = false
+    local dragStart = Vector2.new(0, 0)
+    local startPos = UDim2.new(0, 0, 0, 0)
+
+    local function startDrag(input, gameProcessed)
+        if gameProcessed then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
         end
     end
 
-    -- Dynamically fetch the list of owned pets
-    local ownedPetList = getPetInventoryList()
+    local function updateDrag(input)
+        if dragging then
+            local delta = input.Position - dragStart
+            local newX = startPos.X.Offset + delta.X
+            local newY = startPos.Y.Offset + delta.Y
+            frame.Position = UDim2.new(startPos.X.Scale, newX, startPos.Y.Scale, newY)
+        end
+    end
 
-    -- Pet Selector Dropdown
-    PetTab:AddDropdown("PetSelectorDropdown", {
-        Title = "Your Owned Pets (Name & ID)",
-        Description = "Select a pet to target for automation. Automatically attempts to EQUIP the item.",
-        Values = ownedPetList,
-        Multi = false,
-        Default = ownedPetList[1] or "No Pets Found (Error)",
-        Callback = updatePetStatusLabel
-    })
+    local function endDrag()
+        dragging = false
+    end
 
-    -- Initialize the single status label with the default selected pet after creation
-    updatePetStatusLabel(ownedPetList[1])
+    titleFrame.InputBegan:Connect(startDrag)
+    UserInputService.InputChanged:Connect(updateDrag)
+    UserInputService.InputEnded:Connect(endDrag)
 
-    PetTab:AddParagraph({
-        Title = "Pet Automation Controls",
-        Content = "Control your pet-related scripts here."
-    })
-
-    -- Toggle (Pet Management)
-    local AutoFarmToggle = PetTab:AddToggle("AutoPetFarm", {
-        Title = "Auto Pet Farming",
-        Description = "Automatically engages pet tasks and training.",
-        Default = false
-    })
-    AutoFarmToggle:OnChanged(function(Value)
-        print("Auto Pet Farming Status:", Value)
-    end)
+    updateToggleButton()
 end
 
 --------------------------------------------------------------------------------
--- 3. VISUAL TAB CONTENT
+-- 🔨 Utility Functions
 --------------------------------------------------------------------------------
-do
-    local VisualTab = Tabs.Visual
 
-    VisualTab:AddParagraph({
-        Title = "Player View Controls",
-        Content = "Field of View and general visual modifications."
-    })
-
-    VisualTab:AddToggle("VisualToggle", {
-        Title = "Enable ESP",
-        Description = "Draws boxes around players and items.",
-        Default = false
-    })
-
-    VisualTab:AddSlider("FOV", {
-        Title = "Field of View",
-        Default = 70,
-        Min = 50,
-        Max = 120,
-        Rounding = 0,
-        Callback = function(Value)
-            local camera = game.Workspace.CurrentCamera
-            if camera then
-                camera.FieldOfView = Value
-            end
-            print("FOV set to:", Value)
+-- Function to safely get the physical part from a target object
+local function getPhysicalPart(targetObject)
+    if targetObject:IsA("BasePart") then
+        return targetObject
+    elseif targetObject:IsA("Model") then
+        local primaryPart = targetObject.PrimaryPart
+        if primaryPart and primaryPart:IsA("BasePart") then
+            return primaryPart
         end
-    })
-
-    VisualTab:AddParagraph({
-        Title = "--- Real-Time Game Data Monitor ---",
-        Content = "Toggles an invisible monitor to read current minigame timers and currency from the game UI."
-    })
-    
-    -- Create the monitor labels and store references (FIXED INDEXING)
-    for i, target in ipairs(MINIGAME_MONITOR_TARGETS) do
-        -- Store the label reference directly in the table
-        visualMonitorLabels[target.Name] = VisualTab:AddParagraph({
-            Title = target.Name,
-            Content = "Monitor Disabled."
-        })
+        for _, descendant in pairs(targetObject:GetDescendants()) do
+            if descendant:IsA("BasePart") then
+                return descendant
+            end
+        end
     end
-    
-    -- *** FIX FOR MISSING SetContent METHOD ***
-    -- Wait briefly for Fluent to fully initialize the component objects
-    task.wait(0.2) -- Increased wait time slightly for safety
-
-    local AutoMonitorToggle = VisualTab:AddToggle("AutoMonitorVisuals", {
-        Title = "Enable Live Data Monitoring",
-        Description = "Starts monitoring and updating the timers and currency amounts.",
-        Default = false
-    })
-
-    -- Function to continuously update the labels
-    local function updateMonitorLoop()
-        -- Wait a moment on loop start to allow UI components to be fully ready
-        task.wait(0.5) 
-        
-        -- Ensure the loop runs only while the toggle is enabled and the library is loaded
-        while Options.AutoMonitorVisuals.Value and not Fluent.Unloaded do
-            for _, target in ipairs(MINIGAME_MONITOR_TARGETS) do
-                local label = visualMonitorLabels[target.Name] -- Access by name 
-                
-                -- Determine the root object (PlayerGui or workspace)
-                local root = (target.DataRootName == "PlayerGui" and PlayerGui) or (target.DataRootName == "workspace" and workspace)
-
-                local foundObject = getObjectFromPath(root, target.Path)
-                
-                if label then
-                    local value = "N/A (Path Unloaded)"
-                    
-                    if foundObject then
-                        if foundObject:IsA("TextLabel") or foundObject:IsA("TextBox") then
-                            if foundObject.Text then
-                                value = foundObject.Text
-                            else
-                                value = "N/A (Object Found but No Text Property)"
-                            end
-                        else
-                            value = "Object Found: " .. foundObject.ClassName .. " | Path: " .. target.Path
-                        end
-                    else
-                        value = "N/A (Object Not Found at Path)"
-                        -- No print here to reduce console spam, but error is visible in the UI
-                    end
-
-                    -- *** ROBUST SetContent FIX ***
-                    local success, err = pcall(function()
-                        label:SetContent(tostring(value))
-                    end)
-                    
-                    if not success then
-                        -- This logs the error, but the loop continues without breaking
-                        warn("Fluent UI Error (Attempt 2): SetContent failed for label:", target.Name, " Error:", err)
-                    end
-                end
-            end
-            
-            task.wait(REFRESH_RATE)
-            if Fluent.Unloaded then break end
-        end
-        -- Reset labels when loop stops or script unloads
-        for _, label in pairs(visualMonitorLabels) do
-            if label.SetContent then
-                local success, _ = pcall(function()
-                    label:SetContent("Monitor Disabled.")
-                end)
-            end
-        end
-        visualMonitorTask = nil
-    end
-
-    AutoMonitorToggle:OnChanged(function(Value)
-        if Value then
-            if not visualMonitorTask then
-                visualMonitorTask = task.spawn(updateMonitorLoop)
-                print("Live Data Monitor Enabled.")
-            end
-        elseif visualMonitorTask then
-            task.cancel(visualMonitorTask)
-            visualMonitorTask = nil
-            print("Live Data Monitor Disabled.")
-        end
-    end)
+    return nil
 end
 
 --------------------------------------------------------------------------------
--- 4. UTILITIES TAB CONTENT
---------------------------------------------------------------------------------
-do
-    local UtilitiesTab = Tabs.Utilities
-
-    UtilitiesTab:AddParagraph({
-        Title = "Inventory & Utility Functions",
-        Content = "Manage items and specialized inventory features here."
-    })
-    
-    local ownedFoodList = getFoodInventoryList()
-
-    -- Food Inventory Dropdown with Equip Call
-    UtilitiesTab:AddDropdown("FoodInventoryDropdown", {
-        Title = "Owned Food Items (All)",
-        Description = "Select a food item to target. Automatically attempts to EQUIP the item.",
-        Values = ownedFoodList,
-        Multi = false,
-        Default = ownedFoodList[1] or "No Food Found (Error)",
-        Callback = function(selectedDisplayString)
-            local uniqueId = foodDisplayToUniqueId[selectedDisplayString]
-            attemptEquipItem(uniqueId, selectedDisplayString)
-        end
-    })
-    
-    -- --- GIFTS DROPDOWN AND AUTO OPEN LOGIC ---
-    local ownedGiftList = getGiftInventoryList()
-
-    UtilitiesTab:AddParagraph({
-        Title = "--- Gift Item Management ---",
-        Content = "Select specific unique Gifts to use or open."
-    })
-
-    -- Gifts Multi-Select Dropdown
-    UtilitiesTab:AddDropdown("GiftSelectorDropdown", {
-        Title = "Owned Gifts (Select Multiple)",
-        Description = "Select the specific unique Gift IDs you want to target.",
-        Values = ownedGiftList,
-        Multi = true,
-        Default = {}
-    })
-    
-    -- Auto Open Gift Toggle
-    local AutoOpenGift = UtilitiesTab:AddToggle("AutoOpenGift", {
-        Title = "Auto Open Gift",
-        Description = "Continuously attempts to open the currently selected unique Gift IDs.",
-        Default = false
-    })
-
-    AutoOpenGift:OnChanged(function(Value)
-        if Value then
-            autoOpenGiftTask = task.spawn(function()
-                while Options.AutoOpenGift.Value do
-                    -- ... (Same Auto Open Gift Logic as before) ...
-                    -- 1. Get the selected gift display strings
-                    local selectedDisplayStrings = {}
-                    for displayString, isSelected in pairs(Options.GiftSelectorDropdown.Value) do
-                        if isSelected then
-                           table.insert(selectedDisplayStrings, displayString)
-                        end
-                    end
-                    
-                    if #selectedDisplayStrings == 0 then
-                        print("Auto Gift Open: No gifts selected. Waiting 5s.")
-                        task.wait(5)
-                        if Fluent.Unloaded then break end
-                        continue
-                    end
-                    
-                    -- 2. Convert display strings back to full unique IDs
-                    local giftUniquesToOpen = {}
-                    for _, display in ipairs(selectedDisplayStrings) do
-                        local uniqueId = giftDisplayToUniqueId[display]
-                        if uniqueId then
-                            table.insert(giftUniquesToOpen, uniqueId)
-                        end
-                    end
-                    
-                    if #giftUniquesToOpen == 0 then
-                        print("Auto Gift Open: Selected gifts are no longer in inventory. Refreshing list and waiting 5s.")
-                        
-                        -- Force a UI refresh to update the list of available gifts
-                        local newGiftList = getGiftInventoryList()
-                        Options.GiftSelectorDropdown.Values = newGiftList
-                        Options.GiftSelectorDropdown:SetValue({}) -- Clear selections
-                        
-                        task.wait(5)
-                        if Fluent.Unloaded then break end
-                        continue
-                    end
-                    
-                    local openedCount = 0
-                    local totalToOpen = #giftUniquesToOpen
-                    print(string.format("Auto Gift Open: Starting batch opening of %d unique gifts.", totalToOpen))
-
-                    -- 3. Iterate and attempt to open each selected gift
-                    for _, giftUniqueId in ipairs(giftUniquesToOpen) do
-                        
-                        local success2, result2
-                        
-                        pcall(function()
-                            -- A. Indicate Open Gift (FireServer)
-                            local args1 = { giftUniqueId }
-                            game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("ShopAPI/IndicateOpenGift"):FireServer(unpack(args1))
-                            task.wait(0.1)
-
-                            -- B. Open Gift (InvokeServer)
-                            local args2 = { giftUniqueId }
-                            success2, result2 = pcall(function()
-                                return game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("ShopAPI/OpenGift"):InvokeServer(unpack(args2))
-                            end)
-                            task.wait(0.5)
-                            
-                            -- C. Server Use Tool (FireServer) - Confirms the action server-side
-                            local args3 = { giftUniqueId, "END" }
-                            game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("ToolAPI/ServerUseTool"):FireServer(unpack(args3))
-                            task.wait(0.1)
-                        end)
-
-
-                        if success2 and result2 then
-                            openedCount = openedCount + 1
-                            print(string.format("Gift Open SUCCESS: %s. Result:", giftUniqueId), result2)
-                        else
-                            local errorMessage = success2 and "API returned unsuccessful status/nil result." or result2
-                            print(string.format("Gift Open FAILED for %s. Error:", giftUniqueId), errorMessage)
-                        end
-                        
-                        task.wait(1.5) -- Wait before trying the next gift
-                        if Fluent.Unloaded then break end
-                    end
-                    
-                    local summary = string.format("Batch finished. Successfully attempted to open: %d/%d.", openedCount, totalToOpen)
-                    print(summary)
-
-                    Fluent:Notify({
-                        Title = "Auto Gift Open Batch Complete",
-                        Content = summary .. ". Refreshing list.",
-                        Duration = 5
-                    })
-
-                    -- 4. Refresh the gifts list and UI selection after the batch
-                    local newGiftList = getGiftInventoryList()
-                    Options.GiftSelectorDropdown.Values = newGiftList
-                    Options.GiftSelectorDropdown:SetValue({}) -- Clear selections after a full batch
-                    
-                    -- Also update the Event tab dropdown if it exists
-                    if eventTargetGiftDropdown then
-                        eventTargetGiftDropdown.Values = newGiftList
-                        -- The Event Gift Dropdown is single-select, so we set the first item
-                        eventTargetGiftDropdown:SetValue(newGiftList[1] or "No Gifts Found (Error)")
-                    end
-
-                    task.wait(5) -- Wait 5 seconds before checking again for new selections
-
-                    if Fluent.Unloaded then break end
-                end
-                autoOpenGiftTask = nil
-            end)
-        elseif autoOpenGiftTask then
-            task.cancel(autoOpenGiftTask)
-            autoOpenGiftTask = nil
-            print("Auto Open Gift Disabled.")
-        end
-    end)
-    -- --- END GIFTS DROPDOWN AND AUTO OPEN LOGIC ---
-
-    UtilitiesTab:AddParagraph({
-        Title = "--- Age Potion Automation ---",
-        Content = "Select specific Age Potions to consume on your selected pet."
-    })
-    
-    local ownedAgePotions = getItemDisplayStringsByKind(AGE_POTION_KIND)
-
-    -- New: Age Potion Selector Dropdown (Multi-Select)
-    local AgePotionSelector = UtilitiesTab:AddDropdown("AgePotionSelectorDropdown", {
-        Title = "Select Age Potion IDs to Use",
-        Description = string.format("Uses items matching Kind: '%s'. Select the specific unique IDs below.", AGE_POTION_KIND),
-        Values = ownedAgePotions,
-        Multi = true,
-        Default = ownedAgePotions[1] and {[ownedAgePotions[1]] = true} or {}
-    })
-    
-    -- New: Auto Give Age Potions Toggle (Relocated from Pet Management)
-    local AutoAgeToggle = UtilitiesTab:AddToggle("AutoGiveAgePotions", {
-        Title = "Auto Give Selected Age Potions",
-        Description = "Continuously uses the selected unique Age Potions on the pet selected in the Pet Management tab.",
-        Default = false
-    })
-
-    AutoAgeToggle:OnChanged(function(Value)
-        if Value then
-            autoAgeTask = task.spawn(function()
-                while Options.AutoGiveAgePotions.Value do
-                    -- ... (Same Auto Age Logic as before) ...
-                    -- 1. Get the target pet ID
-                    local petUniqueId = getSelectedPetUniqueId()
-                    
-                    if not petUniqueId then
-                        print("Auto Age: No pet selected in Pet Management tab. Stopping loop.")
-                        Options.AutoGiveAgePotions.Value = false
-                        AutoAgeToggle:SetValue(false)
-                        break
-                    end
-                    
-                    -- 2. Get the selected unique potion IDs
-                    local selectedDisplayStrings = {}
-                    for displayString, isSelected in pairs(Options.AgePotionSelectorDropdown.Value) do
-                        if isSelected then
-                           table.insert(selectedDisplayStrings, displayString)
-                        end
-                    end
-                    
-                    local potionUniques = {}
-                    for _, display in ipairs(selectedDisplayStrings) do
-                        local uniqueId = foodDisplayToUniqueId[display]
-                        if uniqueId then
-                            table.insert(potionUniques, uniqueId)
-                        end
-                    end
-
-                    if #potionUniques == 0 then
-                        print("Auto Age: No unique Age Potions selected or found. Waiting 5s.")
-                        task.wait(5)
-                        if Fluent.Unloaded then break end
-                        continue
-                    end
-                    
-                    local primaryUniqueId = table.remove(potionUniques, 1)
-                    local additionalUniques = potionUniques
-                    local potionCount = 1 + #additionalUniques -- Count includes the primary
-
-                    print(string.format("Auto Age: Found %d selected Potions. Applying to Pet ID: %s", potionCount, petUniqueId))
-                    
-                    local args = {
-                        "__Enum_PetObjectCreatorType_2",
-                        {
-                            additional_consume_uniques = additionalUniques,
-                            pet_unique = petUniqueId,
-                            unique_id = primaryUniqueId
-                        }
-                    }
-
-                    local success, result = pcall(function()
-                        return game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("PetObjectAPI/CreatePetObject"):InvokeServer(unpack(args))
-                    end)
-
-                    if success and result then
-                        print(string.format("Auto Age SUCCESS: Tried to consume %d potions. Result:", potionCount), result)
-                        Fluent:Notify({
-                            Title = "Auto Age Success",
-                            Content = string.format("Applied %d age potions to pet.", potionCount),
-                            Duration = 3
-                        })
-                        
-                        task.wait(0.5)
-                        
-                        -- Refreshing UI after successful consumption
-                        local newList = getPetInventoryList()
-                        Options.PetSelectorDropdown.Values = newList
-                        Options.PetSelectorDropdown:SetValue(Options.PetSelectorDropdown.Value)
-                        
-                        local newFoodList = getFoodInventoryList()
-                        Options.FoodInventoryDropdown.Values = newFoodList
-                        Options.FoodInventoryDropdown:SetValue(Options.FoodInventoryDropdown.Value)
-                        
-                        local newPotions = getItemDisplayStringsByKind(AGE_POTION_KIND)
-                        Options.AgePotionSelectorDropdown.Values = newPotions
-                        
-                        local newSelection = {}
-                        for display, isSelected in pairs(Options.AgePotionSelectorDropdown.Value) do
-                            if isSelected and table.find(newPotions, display) then
-                                newSelection[display] = true
-                            end
-                        end
-                        Options.AgePotionSelectorDropdown:SetValue(newSelection)
-
-                        
-                    else
-                        local errorMessage = success and "API returned unsuccessful status/nil result." or result
-                        print("Auto Age FAILED. Error:", errorMessage)
-                        Fluent:Notify({
-                            Title = "Auto Age Failed",
-                            Content = "Check console for error message. Waiting 5s.",
-                            Duration = 5
-                        })
-                    end
-
-                    task.wait(5)
-
-                    if Fluent.Unloaded then break end
-                end
-                autoAgeTask = nil
-            end)
-        elseif autoAgeTask then
-            task.cancel(autoAgeTask)
-            autoAgeTask = nil
-            print("Auto Give Age Potions Disabled.")
-        end
-    end)
-end
-
---------------------------------------------------------------------------------
--- 5. SHOP TAB CONTENT (WITH PURCHASE LOGIC)
---------------------------------------------------------------------------------
-do
-    local ShopTab = Tabs.Shop
-    local autoBuyTask = nil
-    local PurchaseStatusLabel = nil
-
-    local function getItemDetailsByName(itemName)
-        for _, item in ipairs(allBuyableItems) do
-            if item.name == itemName then
-                return item.id, item.category, item.defaultCount
-            end
-        end
-        return nil, nil, 1
-    end
-
-    local function queuePurchase(selectedItems)
-        local purchasedCount = 0
-        local failedCount = 0
-        local totalItems = #selectedItems
-
-        if totalItems == 0 then
-            return "Idle. No items selected."
-        end
-
-        print("--- ATTEMPTING BATCH PURCHASE (" .. totalItems .. " items) ---")
-
-        for _, itemName in ipairs(selectedItems) do
-            local itemID, itemCategory, buyCount = getItemDetailsByName(itemName)
-
-            if itemID and itemCategory then
-                -- Buy count is fixed at 1 for safety, adjust if needed
-                local args = {
-                    itemCategory,
-                    itemID,
-                    {
-                        buy_count = 1 
-                    }
-                }
-
-                local success, result = pcall(function()
-                    return game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("ShopAPI/BuyItem"):InvokeServer(unpack(args))
-                end)
-
-                if success and result then
-                    purchasedCount = purchasedCount + 1
-                    print("SUCCESS (Assumed): Purchased " .. itemName .. " (" .. itemID .. "). API Result:", result)
-                else
-                    failedCount = failedCount + 1
-                    local errorMessage = success and "API returned unsuccessful status/nil result." or result
-                    print("FAILED: Purchase of " .. itemName .. " failed. Error:", errorMessage)
-                end
-            else
-                failedCount = failedCount + 1
-                print("ERROR: Could not find details for item: " .. itemName)
-            end
-
-            task.wait(0.1)
-        end
-
-        local summary = string.format("Batch finished. Bought: %d, Failed: %d.", purchasedCount, failedCount)
-
-        if not Options.AutoBuyShop.Value then
-            Fluent:Notify({
-                Title = "Purchase Complete",
-                Content = summary,
-                Duration = 5
-            })
-        end
-
-        return summary
-    end
-
-    ShopTab:AddParagraph({
-        Title = "Item Purchase Queue Manager",
-        Content = "Select items below to queue for batch purchase."
-    })
-
-    local allItemNames = {}
-    for _, item in ipairs(allBuyableItems) do
-        table.insert(allItemNames, item.name)
-    end
-
-    local ItemSelector = ShopTab:AddDropdown("ItemSelector", {
-        Title = "Select Items to Purchase",
-        Description = "You can select multiple items to buy.",
-        Values = allItemNames,
-        Multi = true,
-        Default = {"Island Tarsier", "Halloween Spider Box"},
-    })
-
-    ItemSelector:OnChanged(function(Value)
-        local selected = {}
-        for name, state in pairs(Value) do
-            if state then
-                table.insert(selected, name)
-            end
-        end
-        print("Selected Items to Buy:", table.concat(selected, ", "))
-    end)
-
-    ShopTab:AddButton({
-        Title = "Select/Deselect All",
-        Description = "Toggles the selection of all items in the list.",
-        Callback = function()
-            local currentSelections = ItemSelector.Value
-            local allSelected = true
-
-            for _, name in ipairs(allItemNames) do
-                if not currentSelections[name] then
-                    allSelected = false
-                    break
-                end
-            end
-
-            local newSelections = {}
-            for _, name in ipairs(allItemNames) do
-                newSelections[name] = not allSelected
-            end
-
-            ItemSelector:SetValue(newSelections)
-            print((allSelected and "Deselected" or "Selected") .. " all items.")
-        end
-    })
-
-    PurchaseStatusLabel = ShopTab:AddParagraph({
-        Title = "Purchase Status (Label)",
-        Content = "Idle. Ready for manual or auto purchase."
-    })
-
-    ShopTab:AddButton({
-        Title = "Purchase Selected Items",
-        Description = "Executes the purchase command for all selected items.",
-        Callback = function()
-            local selected = {}
-            for name, state in pairs(ItemSelector.Value) do
-                if state then
-                    table.insert(selected, name)
-                end
-            end
-
-            local summary = queuePurchase(selected)
-            if PurchaseStatusLabel and PurchaseStatusLabel.SetContent then
-                PurchaseStatusLabel:SetContent("Manual: " .. summary)
-            end
-        end
-    })
-
-    local AutoBuyToggle = ShopTab:AddToggle("AutoBuyShop", {
-        Title = "Enable Auto-Buy Loop",
-        Description = "Continuously attempts to buy selected items every 5 seconds.",
-        Default = false
-    })
-
-    AutoBuyToggle:OnChanged(function(Value)
-        if Value then
-            autoBuyTask = task.spawn(function()
-                while Options.AutoBuyShop.Value do
-                    local selected = {}
-                    for name, state in pairs(ItemSelector.Value) do
-                        if state then
-                            table.insert(selected, name)
-                        end
-                    end
-
-                    local summary = queuePurchase(selected)
-                    if PurchaseStatusLabel and PurchaseStatusLabel.SetContent then
-                        PurchaseStatusLabel:SetContent("Auto-Buy: " .. summary .. " | Next check in 5s.")
-                    end
-
-                    task.wait(5)
-
-                    if Fluent.Unloaded then break end
-                end
-                if PurchaseStatusLabel and PurchaseStatusLabel.SetContent then
-                    PurchaseStatusLabel:SetContent("Auto-Buy: Disabled. Idle.")
-                end
-                autoBuyTask = nil
-            end)
-        elseif autoBuyTask then
-            task.cancel(autoBuyTask)
-            autoBuyTask = nil
-        end
-        print("Auto-Buy Loop Status:", Value)
-    end)
-end
-
---------------------------------------------------------------------------------
--- 6. EVENT TAB CONTENT (NEW)
---------------------------------------------------------------------------------
-do
-    local EventTab = Tabs.Event
-    local autoUseEventGiftTask = nil -- NEW: Task for Auto Use Event Gift
-
-    EventTab:AddParagraph({
-        Title = "Event Automation Controls",
-        Content = "Toggles for various event-related farming methods."
-    })
-    
-    -- Add 7 Toggles
-    EventTab:AddToggle("AutoEventFarm_1", {
-        Title = "Auto Farm Event Zone 1",
-        Description = "Automates farming in the primary event area.",
-        Default = false
-    })
-    
-    EventTab:AddToggle("AutoEventFarm_2", {
-        Title = "Auto Farm Mini-Game 1",
-        Description = "Automates a specific mini-game/activity.",
-        Default = false
-    })
-    
-    EventTab:AddToggle("AutoEventFarm_3", {
-        Title = "Auto Farm Collectibles",
-        Description = "Automatically collects event-specific items.",
-        Default = false
-    })
-
-    EventTab:AddToggle("AutoEventBoss", {
-        Title = "Auto Defeat Event Boss",
-        Description = "Teleports and attacks the current event boss.",
-        Default = false
-    })
-    
-    EventTab:AddToggle("AutoClaimRewards", {
-        Title = "Auto Claim Milestone/Daily Rewards",
-        Description = "Automatically claims any available rewards.",
-        Default = false
-    })
-    
-    EventTab:AddToggle("AutoEventTeleport", {
-        Title = "Auto Teleport to Next Event Area",
-        Description = "Teleports the player to the next location based on a timer/condition.",
-        Default = false
-    })
-
-    EventTab:AddToggle("AutoPetGrooming", {
-        Title = "Auto Groom Event Pets (If applicable)",
-        Description = "Uses event-specific items on event pets.",
-        Default = false
-    })
-
-    -- Add the Gift Dropdown that shows gifts
-    EventTab:AddParagraph({
-        Title = "Event Gift Selection & Usage",
-        Content = "Select a specific event gift to use or monitor its stock."
-    })
-    
-    local ownedGiftList = getGiftInventoryList()
-    
-    eventTargetGiftDropdown = EventTab:AddDropdown("EventGiftDropdown", {
-        Title = "Owned Gifts (Event Target)",
-        Description = "This dropdown shows all gifts in your inventory for event functions.",
-        Values = ownedGiftList,
-        Multi = false,
-        Default = ownedGiftList[1] or "No Gifts Found (Error)",
-    })
-    
-    -- Add a refresh button for the gifts
-    EventTab:AddButton({
-        Title = "Refresh Gift List",
-        Description = "Reloads the list of gifts from your inventory.",
-        Callback = function()
-            local newList = getGiftInventoryList()
-            eventTargetGiftDropdown.Values = newList
-            eventTargetGiftDropdown:SetValue(newList[1] or "No Gifts Found (Error)")
-            Options.GiftSelectorDropdown.Values = newList -- Update Utility tab too
-            print("Event Gift List Refreshed.")
-        end
-    })
-    
-    -- NEW TOGGLE: Auto Use Event Gift (ServerUseTool)
-    local AutoUseEventGift = EventTab:AddToggle("AutoUseEventGift", {
-        Title = "Auto Use Event Gift (ServerUseTool)",
-        Description = "Continuously fires 'START' and 'END' ToolAPI/ServerUseTool for the selected gift.",
-        Default = false
-    })
-    
-    AutoUseEventGift:OnChanged(function(Value)
-        if Value then
-            autoUseEventGiftTask = task.spawn(function()
-                while Options.AutoUseEventGift.Value do
-                    local giftUniqueId = getSelectedEventGiftUniqueId()
-                    
-                    if not giftUniqueId then
-                        print("Auto Use Event Gift: No gift selected or found in inventory. Waiting 5s.")
-                        task.wait(5)
-                        if Fluent.Unloaded then break end
-                        continue
-                    end
-                    
-                    local giftDisplayName = giftUniqueIdToDisplayString[giftUniqueId] or giftUniqueId
-
-                    print(string.format("Auto Use Event Gift: Firing START/END for %s...", giftDisplayName))
-
-                    -- 1. Firing START
-                    local args_start = { giftUniqueId, "START" }
-                    local success_start, error_start = pcall(function()
-                        game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("ToolAPI/ServerUseTool"):FireServer(unpack(args_start))
-                    end)
-                    if not success_start then
-                        warn("ServerUseTool START FAILED for", giftDisplayName, error_start)
-                    end
-                    
-                    task.wait(0.5) -- Small wait between start and end
-
-                    -- 2. Firing END
-                    local args_end = { giftUniqueId, "END" }
-                    local success_end, error_end = pcall(function()
-                        game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("ToolAPI/ServerUseTool"):FireServer(unpack(args_end))
-                    end)
-                    if not success_end then
-                        warn("ServerUseTool END FAILED for", giftDisplayName, error_end)
-                    end
-                    
-                    -- 3. Firing ExchangeItemForReward (Example from your previous request, kept here for completeness if needed later)
-                    -- NOTE: This step is usually for opening/exchanging, which is different from using the tool.
-                    -- local itemKind = string.split(giftDisplayName, " |")[1]
-                    -- local args_exchange = { itemKind, giftUniqueId }
-                    -- local success_exchange, result_exchange = pcall(function()
-                    --     return game:GetService("ReplicatedStorage"):WaitForChild("API"):WaitForChild("LootBoxAPI/ExchangeItemForReward"):InvokeServer(unpack(args_exchange))
-                    -- end)
-                    -- if success_exchange then print("ExchangeItemForReward SUCCESS for", giftDisplayName, result_exchange) end
-
-
-                    task.wait(2) -- Wait 2 seconds before the next attempt
-
-                    if Fluent.Unloaded then break end
-                end
-                autoUseEventGiftTask = nil
-            end)
-        elseif autoUseEventGiftTask then
-            task.cancel(autoUseEventGiftTask)
-            autoUseEventGiftTask = nil
-            print("Auto Use Event Gift Disabled.")
-        end
-    end)
-    
-
-    -- Example Auto Loop for events (optional, but good practice)
-    local EventToggle = EventTab:AddToggle("EnableEventLoop", {
-        Title = "Enable Event Task Loop",
-        Description = "Master toggle to run all enabled event automation.",
-        Default = false
-    })
-
-    EventToggle:OnChanged(function(Value)
-        if Value then
-            autoEventTask = task.spawn(function()
-                while Options.EnableEventLoop.Value do
-                    -- Example logic: Check toggles and fire events
-                    if Options.AutoEventBoss.Value then
-                        -- Logic to trigger boss fight...
-                        -- print("Attempting Auto Event Boss...")
-                    end
-                    
-                    if Options.AutoClaimRewards.Value then
-                        -- Logic to claim rewards...
-                        -- print("Attempting Auto Claim Rewards...")
-                    end
-                    
-                    -- Only waits if the master toggle is on
-                    task.wait(2)
-                    if Fluent.Unloaded then break end
-                end
-                autoEventTask = nil
-                print("Event Task Loop Disabled.")
-            end)
-        elseif autoEventTask then
-            task.cancel(autoEventTask)
-            autoEventTask = nil
-            print("Event Task Loop Disabled.")
-        end
-    end)
-
-end
-
---------------------------------------------------------------------------------
--- 7. INITIAL SETUP AND ADDONS
+-- 🚀 Core Execution Block
 --------------------------------------------------------------------------------
 
-SaveManager:SetLibrary(Fluent)
-InterfaceManager:SetLibrary(Fluent)
+-- Create the full UI right away
+createFullUI()
 
-SaveManager:IgnoreThemeSettings()
+-- Hardcoded spawn CFrame for returning to the main map after a game or for setup
+local spawn_cframe = CFrame.new(-275.9091491699219, 25.812084197998047, -1548.145751953125, -0.9798217415809631, 0.0000227206928684609, 0.19986890256404877, -0.000003862579433189239, 1, -0.00013261348067317158, -0.19986890256404877, -0.00013070966815575957, -0.9798217415809631)
 
-SaveManager:SetIgnoreIndexes({})
+local InteriorsM = nil
+local UIManager = nil 
 
-InterfaceManager:SetFolder("FluentScriptHub")
-SaveManager:SetFolder("FluentScriptHub/specific-game")
-
-InterfaceManager:BuildInterfaceSection(Tabs.Settings)
-SaveManager:BuildConfigSection(Tabs.Settings)
-
-LocalPlayer.CharacterAdded:Connect(function()
-    local ws = Options.WalkSpeed.Value
-    if ws then
-        local humanoid = getHumanoid()
-        if humanoid then
-            humanoid.WalkSpeed = ws
-        end
-    end
-    local jp = Options.JumpPower.Value
-    if jp then
-        local humanoid = getHumanoid()
-        if humanoid then
-            humanoid.JumpPower = jp
-        end
-    end
+-- Attempt to require necessary modules.
+local successInteriorsM, errorMessageInteriorsM = pcall(function()
+    local ClientModules = ReplicatedStorage:WaitForChild("ClientModules")
+    local Core = ClientModules:WaitForChild("Core")
+    local InteriorsMContainer = Core:WaitForChild("InteriorsM")
+    InteriorsM = require(InteriorsMContainer.InteriorsM)
 end)
 
+if not successInteriorsM then
+    warn("Failed to require InteriorsM:", errorMessageInteriorsM)
+    updateStatus("ERROR: Cannot load InteriorsM. Script halted.")
+    IS_RUNNING = false
+    updateToggleButton()
+else
+    print("InteriorsM module loaded successfully.")
+end
 
-Window:SelectTab("Main")
+local successUIManager, errorMessageUIManager = pcall(function()
+    UIManager = require(ReplicatedStorage:WaitForChild("Fsys")).load("UIManager")
+end)
 
-Fluent:Notify({
-    Title = "Script Update Complete",
-    Content = "The monitor, dropdown equipping, and event gift logic have been updated. The monitor should no longer show 'SetContent is missing'.",
-    Duration = 8
-})
+if not successUIManager or not UIManager then
+    warn("Failed to require UIManager module:", errorMessageUIManager)
+end
 
-SaveManager:LoadAutoloadConfig()
+---
+
+local function initialTeleportSetup()
+    if not InteriorsM then return end
+
+    updateStatus("Initial Teleporting to MainMap...")
+
+    local destinationId = "MainMap"
+    local doorIdForTeleport = "MainDoor" 
+
+    local teleportSettings = {
+        house_owner = localPlayer; 
+        spawn_cframe = spawn_cframe; 
+        anchor_char_immediately = true,
+        post_character_anchored_wait = 0.5,
+        move_camera = true,
+    }
+
+    local waitBeforeTeleport = 5 
+    print(string.format("\nWaiting %d seconds for game stability before initial teleport...", waitBeforeTeleport))
+    updateStatus(string.format("Waiting %d seconds before initial MainMap teleport...", waitBeforeTeleport))
+    task.wait(waitBeforeTeleport)
+
+    print("\n--- Initiating Direct Teleport to MainMap ---")
+    InteriorsM.enter_smooth(destinationId, doorIdForTeleport, teleportSettings, nil)
+
+    local postTeleportWait = 10 
+    updateStatus(string.format("Teleporting to MainMap. Waiting %d seconds for map to load...", postTeleportWait))
+    task.wait(postTeleportWait)
+end
+
+---
+
+local function intermediateTeleportToRing()
+    if not InteriorsM then return end
+
+    local ringTarget = nil
+    local interiorsFolder = game.Workspace:FindFirstChild("Interiors")
+
+    if interiorsFolder then
+        print("Starting persistent search for HauntletMinigameJoinZone...")
+
+        local maxAttempts = 20
+        local attempt = 0
+
+        repeat
+            if not IS_RUNNING then return end
+            attempt = attempt + 1
+            updateStatus(string.format("Searching for Join Zone... (Attempt %d/%d)", attempt, maxAttempts))
+
+            local minigameRingParent = interiorsFolder:FindFirstChild("MainMap!Fall", true)
+            
+            if minigameRingParent then
+                local joinZone = minigameRingParent:FindFirstChild("HauntletMinigameJoinZone", true)
+                if joinZone then
+                    ringTarget = joinZone:FindFirstChild("Ring", true)
+                end
+            end
+
+            if not ringTarget then
+                task.wait(1)
+            end
+        until ringTarget or attempt >= maxAttempts or not localPlayer.Parent
+
+    end
+
+    if ringTarget and ringTarget:IsA("BasePart") then
+        updateStatus("Found Minigame Join Zone Ring. Teleporting in 5 seconds...")
+
+        local countdownTime = 5
+        for i = countdownTime, 1, -1 do
+            if not IS_RUNNING then return end
+            updateStatus(string.format("Teleporting to Join Zone in... %d seconds", i))
+            wait(1)
+        end
+        
+        if not IS_RUNNING then return end
+
+        updateStatus("Teleporting to Minigame Join Zone Ring NOW...")
+        
+        rootPart.Anchored = true
+        rootPart.CFrame = ringTarget.CFrame * CFrame.new(0, TELEPORT_OFFSET_Y, 0)
+        rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        rootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        wait(TELEPORT_DELAY) 
+        rootPart.Anchored = false
+        
+        updateStatus("Teleport to Join Zone complete. Starting continuous search.")
+        wait(1)
+    else
+        warn("Failed to find Minigame Join Zone Ring.")
+        updateStatus("Join Zone not found. Starting persistent door search directly.")
+        wait(2)
+    end
+end
+
+---
+
+-- Main script flow
+if SCRIPT_ENABLED_DEFAULT then
+    initialTeleportSetup()
+    intermediateTeleportToRing()
+end
+
+-- MAIN CONTINUOUS LOOP
+while true do
+    -- **CRITICAL CHECK**: Only proceed if IS_RUNNING is true
+    while not IS_RUNNING do
+        updateStatus("Teleport System is OFF. Awaiting activation...")
+        wait(1)
+    end
+
+    -- Check if the primary container exists
+    if not interiorsRoot then
+        print("Error: Could not find 'Interiors' folder.")
+        updateStatus("ERROR: Missing 'Interiors' folder. Script halted.")
+        IS_RUNNING = false
+        updateToggleButton()
+        break
+    end
+
+    local teleportTargets = {}
+    local roomModels = {}
+    
+    -- 2. Persistent Search Loop for Room Models
+    -- FIX APPLIED: Changed prefix from "HauntletInterior::" to the correct "Hauntlet::"
+    local searchPrefix = "^Hauntlet::"
+    local minigameName = "Hauntlet"
+
+    while #roomModels == 0 do
+        if not IS_RUNNING then break end
+        updateStatus(string.format("Searching for %s Minigame...", minigameName))
+        
+        roomModels = {}
+        
+        for _, object in pairs(interiorsRoot:GetChildren()) do
+            -- Look for models starting with the Hauntlet prefix
+            if string.match(object.Name, searchPrefix) and object:IsA("Model") then
+                table.insert(roomModels, object)
+            end
+        end
+        
+        if #roomModels == 0 then
+            wait(SEARCH_INTERVAL)
+        end
+    end
+    
+    if not IS_RUNNING then continue end
+
+    print(string.format("Found %d %s Room Models. Starting target scan.", #roomModels, minigameName))
+
+    -- Now, search within these models for the actual teleport rings
+    for _, roomModel in ipairs(roomModels) do
+        if not IS_RUNNING then break end
+        for _, object in pairs(roomModel:GetDescendants()) do
+            if not IS_RUNNING then break end
+            -- Find parts/models whose name contains "teleport" (case-insensitive)
+            if string.match(string.lower(object.Name), "teleport") and (object:IsA("BasePart") or object:IsA("Model")) then
+                local physicalPart = getPhysicalPart(object)
+                if physicalPart then
+                    table.insert(teleportTargets, {
+                        part = physicalPart,
+                        roomModel = roomModel
+                    })
+                end
+            end
+        end
+    end
+    
+    if not IS_RUNNING then continue end
+
+    local totalTargets = #teleportTargets
+    updateStatus(string.format("Found %d total teleport targets. Starting sequence...", totalTargets))
+
+    -- 3. Teleport to each target and update UI
+    if totalTargets > 0 then
+        for i, targetData in ipairs(teleportTargets) do
+            if not IS_RUNNING then break end
+            
+            local ring = targetData.part
+            local roomModel = targetData.roomModel
+            currentTeleportIndex = i
+            
+            local doorHitName = ring.Name
+            -- Extract the specific room name after the prefix (e.g., "Fall" from "Hauntlet::Fall")
+            local roomName = string.match(roomModel.Name, searchPrefix .. "([^:]+)") or "Unknown Room"
+
+            local statusText = string.format("Teleporting: %d/%d | DoorHit: %s | Room: %s", 
+                currentTeleportIndex, totalTargets, doorHitName, roomName)
+            updateStatus(statusText)
+
+            -- Create and position the marker cube (for visual confirmation)
+            local marker = Instance.new("Part")
+            marker.Name = "TeleportMarker_" .. i
+            marker.Size = MARKER_SIZE
+            marker.CFrame = ring.CFrame
+            marker.Anchored = true
+            marker.CanCollide = false
+            marker.BrickColor = MARKER_COLOR
+            marker.Material = Enum.Material.Neon
+            marker.Transparency = 0.2
+            marker.Parent = game.Workspace
+
+            -- Perform Teleportation (Anchoring is used for precise movement)
+            rootPart.Anchored = true
+            rootPart.CFrame = ring.CFrame * CFrame.new(0, TELEPORT_OFFSET_Y, 0)
+            rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            rootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            wait(TELEPORT_DELAY) 
+            rootPart.Anchored = false
+
+            marker:Destroy()
+        end
+        
+        if IS_RUNNING then
+            updateStatus(string.format("Teleport sequence complete! Hit all %d targets. Restarting search...", totalTargets))
+            wait(SEARCH_INTERVAL)
+        end
+    else
+        if IS_RUNNING then
+            updateStatus("Error: Found 0 teleport targets. Restarting search...")
+            wait(SEARCH_INTERVAL)
+        end
+    end
+end
+
+
+
+
+
+
+
+task.wait(3)
+
+
+
+--[[
+    Roblox Teleporter Script - Configuration and Core Logic
+    This script is designed to perform safe, timed teleportation and concurrent model manipulation
+    to assist with minigame grinding.
+    
+    *** FIX APPLIED: Removed all 'goto' statements to eliminate "Incomplete statement" error.
+    The main logic now uses a nested function to control flow robustly.
+    *** UPDATE: UI now parents itself to the existing 'HauntletFarmUI.MainFrame.ContentFrame'
+        if available, allowing it to move with the main GUI. Position adjusted for new parent.
+]]
+
+-- =================================================================================
+--                              CONFIGURATION SECTION
+-- =================================================================================
+
+-- Teleport Targets
+local TARGET_PART_NAME = "DoorDressing"
+local TELEPORT_DELAY = 10 -- Time in seconds to wait between teleports (Set to 10s for safety)
+
+-- Timer Safety (New Centralized Configuration)
+local MIN_STOP_TIME_MMSS = "00:30" -- The time (MM:SS) at which teleporting MUST stop (e.g., "00:30")
+local MIN_SAFE_TIME_SECONDS = 31   -- Automatically calculated as the second *after* the stop time
+                                   -- (e.g., 00:30 stop means 31 seconds is the minimum safe time to run)
+
+-- Exclusion List (Interiors to skip for DoorDressing targets)
+local EXCLUDED_INTERIOR_NAMES_SET = {
+    ["MainMap!Fall"] = true,
+}
+
+-- Configuration for Model Mover and Intermittent Teleport
+local TARGET_INTERIOR_NAME = "SleepOrTreatInterior::" -- Prefix for dynamic searching
+local TARGET_MODEL_NAME = "Sandman"
+local MODEL_MOVE_POSITION = CFrame.new(0, 50000, 0) -- Moves the Sandman model 50,000 studs high
+local MODEL_MOVE_INTERVAL = 1.0 -- How often to re-move the model (every 1 second)
+
+-- =================================================================================
+--                            SERVICES AND INITIALIZATION
+-- =================================================================================
+
+-- Services/Instances
+local Players = game:GetService("Players")
+local workspace = game:GetService("Workspace")
+
+-- **ROBUST INITIALIZATION**
+local player = Players.LocalPlayer
+if not player then
+    print("Waiting for LocalPlayer...")
+    repeat task.wait(0.1) until Players.LocalPlayer
+    player = Players.LocalPlayer
+end
+
+-- Global UI Variables and State
+local DoorStatusLabel = nil
+local isTeleporting = true       -- Operational status: true only if (Manual ON AND Timer NOT Low)
+local isManuallyToggledOn = true -- New flag: Tracks the state of the UI button
+local teleportThread = nil       -- Reference to the main teleport loop thread
+local cachedTargets = {}         -- Stores the list of DoorDressing parts and their house names
+local shouldRecacheTargets = true -- NEW: Flag to force target recalculation on start/resume after minigame end
+
+-- Global UI Colors (Matching the provided visual style)
+local COLOR_INFO = Color3.new(0.1, 0.4, 0.8)   -- Blue
+local COLOR_SUCCESS = Color3.new(0, 1, 0)      -- Green (for ON state)
+local COLOR_ERROR = Color3.new(1, 0, 0)        -- Red (for X button)
+local COLOR_SEARCH = Color3.new(0.8, 0.4, 0.1)  -- Orange/Yellowish
+local COLOR_PAUSED = Color3.new(0.5, 0.5, 0.5) -- Gray (for OFF state)
+local COLOR_STATUS_BAR = Color3.new(0.1, 0.1, 0.1) -- Near Black for top bar
+
+
+-- =================================================================================
+--                                HELPER FUNCTIONS
+-- =================================================================================
+
+-- Helper function to update UI status and log to console
+local function updateStatus(message, color)
+    if DoorStatusLabel then
+        DoorStatusLabel.Text = message
+    end
+    print("[STATUS] " .. message)
+end
+
+-- Helper function to convert MM:SS string to total seconds
+local function parseTime(timeString)
+    -- Expects format "MM:SS" (e.g., "00:25")
+    local minutes, seconds = timeString:match("(%d+):(%d+)")
+    if minutes and seconds then
+        return tonumber(minutes) * 60 + tonumber(seconds)
+    end
+    return 0 -- Return 0 if parsing fails
+end
+
+-- Function to simulate click events (uses executor function 'getconnections')
+local function clickButton(button)
+    if not isTeleporting then return end -- Operational guard
+
+    if button and getconnections then
+        -- *** FULL MOUSE 1 EVENT FIRING SEQUENCE (Down, Click, Up) ***
+        -- This logic is fine for mobile as well, provided the button exists and is clickable.
+        
+        -- 1. Down (Press)
+        for _, connection in pairs(getconnections(button.MouseButton1Down)) do
+            connection:Fire()
+        end
+        task.wait(0.1) -- Delay (Using task.wait for modern Lua environment)
+        
+        -- 2. Click (The moment the action is registered)
+        for _, connection in pairs(getconnections(button.MouseButton1Click)) do
+            connection:Fire()
+        end
+        task.wait(0.1) -- Delay
+        
+        -- 3. Up (Release)
+        for _, connection in pairs(getconnections(button.MouseButton1Up)) do
+            connection:Fire()
+        end
+        print("Successfully clicked the button:", button.Name)
+        
+    elseif button then
+        -- Fallback for standard LocalScripts (only supports Mouse1 click)
+        print("Button found, but getconnections is unavailable. Using standard click:", button.Name)
+        button:Click() 
+    else
+        print("Button not found!")
+    end
+end
+
+-- --- NATIVE STATUS UI CREATION (Redesigned to parent to existing UI) ---
+local function createNativeDoorStatusUI()
+    local playerGui = player.PlayerGui
+    
+    -- Attempt to find the target parent frame
+    local targetParentFrame = playerGui:FindFirstChild("HauntletFarmUI", true)
+    targetParentFrame = targetParentFrame and targetParentFrame:FindFirstChild("MainFrame")
+    targetParentFrame = targetParentFrame and targetParentFrame:FindFirstChild("ContentFrame")
+
+    local parentInstance = nil
+    
+    if targetParentFrame and targetParentFrame:IsA("Frame") then
+        print("[STATUS] Found HauntletFarmUI parent. Inserting Teleporter UI inside.")
+        -- If target parent is found, we use it directly and do not create a ScreenGui
+        parentInstance = targetParentFrame
+    else
+        print("[STATUS] HauntletFarmUI parent not found. Creating local ScreenGui.")
+        -- Fallback: Create a local ScreenGui if the target is missing or corrupted
+        local ScreenGui = Instance.new("ScreenGui")
+        ScreenGui.Name = "TeleporterUI"
+        ScreenGui.DisplayOrder = 999 
+        ScreenGui.Enabled = true
+        ScreenGui.Parent = playerGui
+        parentInstance = ScreenGui -- The MainFrame will be parented to this ScreenGui
+    end
+
+    -- Check for existing MainFrame within the chosen parent
+    local existingUi = parentInstance:FindFirstChild("TeleporterMainFrame")
+    if existingUi then
+        existingUi:Destroy() -- Destroy any old instance to ensure a fresh start
+    end
+    
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "TeleporterMainFrame"
+    MainFrame.BackgroundColor3 = Color3.new(0.05, 0.05, 0.05) 
+    MainFrame.BorderSizePixel = 0
+    
+    -- Size and Positioning Logic
+    if parentInstance.ClassName == "ScreenGui" then
+        -- If parented to ScreenGui (Fallback, old behavior)
+        MainFrame.Size = UDim2.new(0.3, 0, 0.08, 0) -- Original size
+        MainFrame.AnchorPoint = Vector2.new(0, 1)   -- Original anchor
+        MainFrame.Position = UDim2.new(0.05, 0, 0.95, 0) -- Original position (bottom-left)
+    else
+        -- If parented to existing Frame (New behavior - make it flexible/vertical)
+        MainFrame.Size = UDim2.new(1, 0, 0.35, 0) -- Takes 100% width, 35% height of the ContentFrame
+        MainFrame.Position = UDim2.new(0, 0, 0, 0) -- Start at top-left of parent frame
+        
+        -- Add UIListLayout for vertical stacking within the new parent frame
+        local verticalLayout = Instance.new("UIListLayout")
+        verticalLayout.FillDirection = Enum.FillDirection.Vertical
+        verticalLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        verticalLayout.Parent = MainFrame
+        
+        -- Add UIGridLayout to the ContentFrame if it doesn't exist, to manage children
+        -- NOTE: We rely on the existing UI handling this, but adding a list layout to our frame is safer.
+    end
+    
+    -- Add UICorner for rounded look
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = MainFrame
+    
+    -- Top Status Bar (Black)
+    local StatusLabel = Instance.new("TextLabel")
+    StatusLabel.Name = "StatusLabel"
+    StatusLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    StatusLabel.Position = UDim2.new(0, 0, 0, 0)
+    StatusLabel.Text = "Initializing..." 
+    StatusLabel.Font = Enum.Font.SourceSansBold
+    StatusLabel.TextColor3 = Color3.new(1, 1, 1)
+    StatusLabel.TextSize = 18
+    StatusLabel.BackgroundTransparency = 0.0
+    StatusLabel.BackgroundColor3 = COLOR_STATUS_BAR -- Black bar
+    StatusLabel.BorderSizePixel = 0
+    StatusLabel.TextWrapped = true
+    
+    -- Bottom Button Frame (Container for the two large buttons)
+    local ButtonFrame = Instance.new("Frame")
+    ButtonFrame.Name = "ButtonFrame"
+    ButtonFrame.Size = UDim2.new(1, 0, 0.5, 0)
+    ButtonFrame.Position = UDim2.new(0, 0, 0.5, 0)
+    ButtonFrame.BackgroundTransparency = 1.0
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Padding = UDim.new(0, 0) 
+    UIListLayout.FillDirection = Enum.FillDirection.Horizontal -- Ensure left-to-right flow
+    UIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    UIListLayout.Parent = ButtonFrame
+    
+    -- TELEPORT: ON/OFF Button (Green/Gray)
+    local TeleportToggle = Instance.new("TextButton")
+    TeleportToggle.Name = "TeleportToggle"
+    TeleportToggle.Size = UDim2.new(0.75, 0, 1, 0) -- Takes up 75% width
+    TeleportToggle.Text = "TELEPORT: ON"
+    TeleportToggle.Font = Enum.Font.SourceSansBold
+    TeleportToggle.TextColor3 = Color3.new(0, 0, 0)
+    TeleportToggle.TextSize = 20
+    TeleportToggle.BackgroundColor3 = COLOR_SUCCESS -- Green
+    TeleportToggle.BorderSizePixel = 0
+    Instance.new("UICorner", TeleportToggle).CornerRadius = UDim.new(0, 8)
+    
+    -- X Button (Red)
+    local CloseButton = Instance.new("TextButton")
+    CloseButton.Name = "CloseButton"
+    CloseButton.Size = UDim2.new(0.25, 0, 1, 0) -- Takes up 25% width
+    CloseButton.Text = "X"
+    CloseButton.Font = Enum.Font.SourceSansBold
+    CloseButton.TextColor3 = Color3.new(1, 1, 1)
+    CloseButton.TextSize = 28 -- Adjusted for a bolder 'X' to match the image
+    CloseButton.BackgroundColor3 = COLOR_ERROR -- Red
+    CloseButton.BorderSizePixel = 0
+    Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(0, 8)
+    
+    -- Hierarchy (Red X, then Green ON/OFF)
+    StatusLabel.Parent = MainFrame
+    CloseButton.Parent = ButtonFrame    -- X button placed first
+    TeleportToggle.Parent = ButtonFrame -- Teleport button placed second
+    ButtonFrame.Parent = MainFrame
+    
+    -- Set global reference for status updates
+    DoorStatusLabel = StatusLabel
+    
+    -- **FINAL PARENTING STEP**
+    MainFrame.Parent = parentInstance
+
+    return TeleportToggle, CloseButton
+end
+
+
+-- Function to continuously monitor the minigame timer and control isTeleporting state
+local function timerMonitor()
+    updateStatus("Timer Monitor active.", COLOR_INFO)
+    
+    -- Calculate the actual minimum safe time from the config string
+    local requiredMinSafeSeconds = parseTime(MIN_STOP_TIME_MMSS) + 1
+
+    while task.wait(0.5) do
+        -- --- DIRECT PATH TO VALUE LABEL (Watching this label) ---
+        local valueLabel = player.PlayerGui:FindFirstChild("MinigameInGameApp", true)
+        valueLabel = valueLabel and valueLabel:FindFirstChild("Body", true)
+        valueLabel = valueLabel and valueLabel:FindFirstChild("Left")
+        valueLabel = valueLabel and valueLabel:FindFirstChild("Container")
+        valueLabel = valueLabel and valueLabel:FindFirstChild("ValueLabel")
+        
+        -- Get UI buttons for visual update
+        -- Updated path to support both ScreenGui (fallback) and HauntletFarmUI parent
+        local uiContainer = player.PlayerGui:FindFirstChild("TeleporterUI") or player.PlayerGui:FindFirstChild("HauntletFarmUI", true)
+        local mainFrame = uiContainer and uiContainer:FindFirstChild("TeleporterMainFrame")
+        local toggleButton = mainFrame and mainFrame.ButtonFrame.TeleportToggle
+
+        -- --- HANDLE UI TOGGLE APPEARANCE ---
+        if toggleButton then
+            if isManuallyToggledOn then
+                toggleButton.Text = "TELEPORT: ON"
+                toggleButton.BackgroundColor3 = COLOR_SUCCESS
+            else
+                toggleButton.Text = "TELEPORT: OFF"
+                toggleButton.BackgroundColor3 = COLOR_PAUSED
+            end
+        end
+        
+        -- If user manually paused, keep operational status paused and skip timer check
+        if not isManuallyToggledOn then
+            if isTeleporting then isTeleporting = false end
+            updateStatus("Teleporting PAUSED by user (Manual).", COLOR_PAUSED)
+            continue
+        end
+        
+        -- --- TIMER LOGIC (Only runs if isManuallyToggledOn is true) ---
+        if valueLabel and valueLabel.Visible and valueLabel.Text then
+            local timeText = valueLabel.Text
+            local totalSeconds = parseTime(timeText)
+            
+            -- *** CRITICAL LOGIC: Stop if current time is less than or equal to the stop time ***
+            if totalSeconds < requiredMinSafeSeconds and totalSeconds >= 0 then
+                -- PAUSE: Timer is low (e.g., 00:30 or less)
+                if isTeleporting then
+                    isTeleporting = false
+                    
+                    -- Force recache for the next minigame round/next safe window
+                    shouldRecacheTargets = true 
+                    
+                    -- Update DoorStatusLabel text directly to show reason for pause
+                    if DoorStatusLabel then
+                        DoorStatusLabel.Text = string.format("TIMER LOW: %s. Teleports paused (Stop at %s).", timeText, MIN_STOP_TIME_MMSS)
+                    end
+                end
+            elseif totalSeconds >= requiredMinSafeSeconds then
+                -- RESUME: Time is safe (e.g., 00:31 or more)
+                if not isTeleporting then
+                    isTeleporting = true
+                    -- Force recache here to signal the teleportLoop to restart search
+                    shouldRecacheTargets = true
+                    updateStatus(string.format("TIMER SAFE: %s. Teleports resumed. Starting search/teleport.", timeText), COLOR_SUCCESS)
+                end
+            end
+            
+        elseif not valueLabel and isManuallyToggledOn then
+            -- RESUME: Minigame GUI is gone (meaning minigame is over or hasn't started)
+            if not isTeleporting then
+                isTeleporting = true
+                -- *** Force recache when minigame is over and we resume ***
+                shouldRecacheTargets = true 
+                updateStatus("Minigame ended/unstarted. Teleports resumed. Will search for new interior.", COLOR_SUCCESS)
+            end
+        end
+    end
+end
+
+-- Function to continuously find and click the target GUI button
+local function infiniteClicker()
+    updateStatus("Sandman/Knock Clicker thread started.", COLOR_SUCCESS)
+    
+    while task.wait(0.5) do -- Loop indefinitely, checking every 0.5 seconds
+        if not isTeleporting then continue end -- Skip if operational status is paused
+
+        -- 1. Attempt to find the Sandman Sleep Button (SandmanApp.Background.Sleep.Button)
+        local sandmanButton = player.PlayerGui:FindFirstChild("SandmanApp", true)
+        sandmanButton = sandmanButton and sandmanButton:FindFirstChild("Background")
+        sandmanButton = sandmanButton and sandmanButton:FindFirstChild("Sleep")
+        sandmanButton = sandmanButton and sandmanButton:FindFirstChild("Button")
+        
+        if sandmanButton and sandmanButton:IsA("GuiButton") and sandmanButton.Visible then
+            clickButton(sandmanButton)
+            continue -- Only click one per cycle, prioritize Sandman button
+        end
+
+        -- 2. Attempt to find the Minigame Knock Button (MinigameHotbarApp.Hotbar.Knock.Button)
+        local knockButton = player.PlayerGui:FindFirstChild("MinigameHotbarApp", true)
+        knockButton = knockButton and knockButton:FindFirstChild("Hotbar")
+        knockButton = knockButton and knockButton:FindFirstChild("Knock")
+        knockButton = knockButton and knockButton:FindFirstChild("Button")
+
+        if knockButton and knockButton:IsA("GuiButton") and knockButton.Visible then
+            clickButton(knockButton)
+        end
+    end
+end
+
+-- Function to continuously move a specific model far away
+local function infiniteModelMover()
+    updateStatus("Model Mover (Sandman) thread started.", COLOR_INFO)
+    
+    while task.wait(MODEL_MOVE_INTERVAL) do
+        -- Find the interior model using prefix matching
+        local interior = nil
+        for _, child in pairs(workspace.Interiors:GetChildren()) do
+            -- Check if the name starts with the TARGET_INTERIOR_NAME prefix
+            if child:IsA("Model") and child.Name:sub(1, #TARGET_INTERIOR_NAME) == TARGET_INTERIOR_NAME then
+                interior = child
+                break -- Found the interior model
+            end
+        end
+        
+        if interior then
+            -- Find all descendants named "Sandman" inside the target interior
+            for _, model in ipairs(interior:GetDescendants()) do
+                -- Check if it's a Model and has the target name
+                if model.Name == TARGET_MODEL_NAME and model:IsA("Model") then
+                    -- Set the model's position far away
+                    if model.PrimaryPart then
+                        model:SetPrimaryPartCFrame(MODEL_MOVE_POSITION)
+                    else
+                        -- If no PrimaryPart, attempt to move all base parts relative to the model's current center
+                        local modelCenter = model:GetBoundingBox().p
+                        for _, part in ipairs(model:GetChildren()) do
+                            if part:IsA("BasePart") then
+                                -- Preserve the relative offset, but set the CFrame to the high position
+                                part.CFrame = MODEL_MOVE_POSITION * CFrame.new(part.Position - modelCenter)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Helper function to find the specific fixed Ring target
+local function findRingTarget()
+    -- Find the interior model using prefix matching
+    local interior = nil
+    for _, child in pairs(workspace.Interiors:GetChildren()) do
+        -- Check if the name starts with the TARGET_INTERIOR_NAME prefix
+        if child:IsA("Model") and child.Name:sub(1, #TARGET_INTERIOR_NAME) == TARGET_INTERIOR_NAME then
+            interior = child
+            break -- Found the interior model
+        end
+    end
+    
+    if not interior then return nil end
+    
+    -- Trace the full path: Visual.TreatDash_V1.CandyBasketMain.CandyZone.Ring
+    local target = interior:FindFirstChild("Visual")
+    if not target then return nil end
+    target = target:FindFirstChild("TreatDash_V1")
+    if not target then return nil end
+    target = target:FindFirstChild("CandyBasketMain")
+    if not target then return nil end
+    target = target:FindFirstChild("CandyZone")
+    if not target then return nil end
+    target = target:FindFirstChild("Ring")
+    
+    if target and target:IsA("BasePart") then
+        return target
+    end
+    return nil
+end
+
+-- Function to find and filter the main DoorDressing targets
+local function findAndFilterTargets(rootSearchArea)
+    local validTargets = {}
+
+    if not rootSearchArea then
+        updateStatus("Error: 'Interiors' folder not found.", COLOR_ERROR)
+        return validTargets
+    end
+    
+    updateStatus(string.format("Found %d Interior Models. Searching for specific DoorDressing paths...", #rootSearchArea:GetChildren()), COLOR_INFO) 
+    
+    for _, interiorModel in pairs(rootSearchArea:GetChildren()) do
+        if interiorModel:IsA("Model") and not EXCLUDED_INTERIOR_NAMES_SET[interiorModel.Name] then
+            
+            local pHouses = interiorModel:FindFirstChild("PlotHouses")
+            
+            if pHouses then
+                -- Iterate through ALL children that match the "House_X" pattern
+                for _, house in pairs(pHouses:GetChildren()) do
+                    -- Check if the object is a model and its name starts with "House_"
+                    if house:IsA("Model") and house.Name:match("^House_%d+$") then
+                        
+                        -- Trace the rest of the path: Doors.MainDoor.Door.DoorDressing
+                        local doors = house:FindFirstChild("Doors")
+                        local mainDoor = doors and doors:FindFirstChild("MainDoor")
+                        local door = mainDoor and mainDoor:FindFirstChild("Door")
+                        local doorDressing = door and door:FindFirstChild(TARGET_PART_NAME) -- TARGET_PART_NAME is "DoorDressing"
+                        
+                        if doorDressing and doorDressing:IsA("BasePart") then
+                            -- Store the part and the house name for the teleport loop
+                            table.insert(validTargets, {
+                                part = doorDressing,
+                                houseName = house.Name
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return validTargets
+end
+
+-- Core logic function to be called once per while loop iteration.
+-- Returning from this function acts as the "continue" to the next iteration of the outer while loop.
+local function executeTeleportStep(rootSearchArea, currentHRP)
+    
+    -- --- TARGET FINDING AND CACHING LOGIC (RE-SEARCH) ---
+    if shouldRecacheTargets then
+        
+        if not rootSearchArea then
+            updateStatus("Error: 'Interiors' folder not found. Waiting 5s.", COLOR_ERROR)
+            task.wait(5)
+            return -- Replaces the old 'goto next_loop'
+        end
+        
+        -- Wait robustly for models to load (in case a new interior just loaded)
+        local currentInteriorCount = 0
+        repeat
+            updateStatus("Recaching: Waiting for new interior models to load...", COLOR_SEARCH)
+            task.wait(1.0)
+            currentInteriorCount = #rootSearchArea:GetChildren()
+        until currentInteriorCount > 0
+
+        -- Perform the expensive search
+        cachedTargets = findAndFilterTargets(rootSearchArea)
+        shouldRecacheTargets = false -- Reset flag after successful recache
+    end
+    
+    local totalTargets = #cachedTargets
+
+    if totalTargets == 0 then
+        updateStatus("No targets found. Forcing re-search in 5s. (Searching for Minigame Houses)", COLOR_ERROR)
+        shouldRecacheTargets = true -- Force re-search in the next loop iteration
+        task.wait(5)
+        return -- Replaces the old 'goto next_loop'
+    end
+
+    updateStatus(string.format("Found %d targets. Starting teleport sequence (10s delay per target).", totalTargets), COLOR_INFO)
+
+    for i, targetInfo in ipairs(cachedTargets) do -- Iterate over cachedTargets, NOW targetInfo = {part, houseName}
+        
+        -- Check operational status frequently during the loop
+        while not isTeleporting do task.wait(0.1) end
+        
+        -- Extract the part and the house name
+        local target = targetInfo.part
+        local houseName = targetInfo.houseName
+        
+        -- 1. Teleport to the DoorDressing Target
+        local targetPosition = target.CFrame.p + Vector3.new(0, 5, 0)
+
+        currentHRP.CFrame = CFrame.new(targetPosition)
+        
+        -- Safer teleport block
+        local humanoid = currentCharacter:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.PlatformStand = true
+            task.wait(0.2) 
+            humanoid.PlatformStand = false
+        end
+
+        -- Logging and Status Update
+        local interiorModelName = "Unknown Interior"
+        
+        -- Get the Interior Model Name (ancestor whose parent is Interiors)
+        local currentAncestor = target.Parent
+        while currentAncestor and currentAncestor.Parent ~= workspace.Interiors do
+            currentAncestor = currentAncestor.Parent
+        end
+        
+        if currentAncestor and currentAncestor.Parent == workspace.Interiors then
+            interiorModelName = currentAncestor.Name
+        end
+        
+        -- UPDATED STATUS MESSAGE to use the dynamic houseName
+        local statusMessage = string.format("[%d/%d] Teleporting to %s, Interior: %s", 
+            i, totalTargets, houseName, interiorModelName)
+            
+        updateStatus(statusMessage, COLOR_INFO)
+
+        task.wait(TELEPORT_DELAY) -- Standard wait (10 seconds)
+
+        -- 2. NEW: Teleport to the RING TARGET after every DoorDressing teleport
+        
+        -- Check operational status before intermittent teleport
+        while not isTeleporting do task.wait(0.1) end
+        
+        local ringTarget = findRingTarget()
+        
+        if ringTarget then
+            local ringPosition = ringTarget.CFrame.p + Vector3.new(0, 5, 0)
+            currentHRP.CFrame = CFrame.new(ringPosition)
+            
+            -- Safer teleport block
+            if humanoid then
+                humanoid.PlatformStand = true
+                task.wait(0.2) 
+                humanoid.PlatformStand = false
+            end
+            
+            updateStatus("JUMPED TO CandyZone Ring! Resuming main path.", COLOR_SUCCESS)
+            task.wait(0.5) -- Short delay
+        end
+    end
+
+    -- Finished current batch, wait briefly before re-searching for new targets
+    updateStatus(string.format("Batch of %d targets complete. Restarting sequence in 5 seconds.", totalTargets), COLOR_INFO)
+    task.wait(5)
+end
+
+-- Main teleport loop logic
+local function teleportLoop()
+    local rootSearchArea = workspace:FindFirstChild("Interiors")
+    
+    -- ** BEGIN INFINITE TELEPORT LOOP **
+    while true do
+        
+        -- 1. DYNAMIC CHARACTER CHECK: Get the current character and HRP (Handles respawns)
+        local currentCharacter = player.Character or player.CharacterAdded:Wait()
+        local currentHRP = currentCharacter:FindFirstChild("HumanoidRootPart")
+
+        -- Wait if HRP is missing (e.g., character still loading)
+        while not currentHRP do
+            updateStatus("Waiting for HumanoidRootPart to load...", COLOR_SEARCH)
+            task.wait(0.5)
+            currentCharacter = player.Character or player.CharacterAdded:Wait()
+            currentHRP = currentCharacter:FindFirstChild("HumanoidRootPart")
+        end
+        
+        -- 2. PAUSE BLOCK: Wait here if the operational status is OFF (either manual or timer)
+        while not isTeleporting do task.wait(0.1) end 
+
+        -- 3. Execute the core logic block (This replaces the large section with GOTO/LABELS)
+        -- The nested function will return if it needs to skip to the next iteration.
+        executeTeleportStep(rootSearchArea, currentHRP)
+    end
+    -- ** END INFINITE TELEPORT LOOP **
+end
+
+-- Entry point: Sets up UI and starts concurrent tasks
+local function startTeleport()
+    local TeleportToggle, CloseButton = createNativeDoorStatusUI() 
+    updateStatus("Script Initialized. Starting background services...", COLOR_INFO)
+
+    -- UI Button Connections
+    CloseButton.MouseButton1Click:Connect(function()
+        -- Setting the flag to false allows the spawned threads to detect the stop condition
+        isManuallyToggledOn = false -- Disable manual toggle
+        isTeleporting = false       -- Ensure operational status is false
+        
+        if teleportThread then
+            task.cancel(teleportThread) -- Stop the main teleport loop
+        end
+        
+        -- Updated Destruction Logic: Destroy the MainFrame, which may be a child of an external UI
+        local mainFrame = CloseButton.Parent.Parent
+        if mainFrame.Parent and mainFrame.Parent.ClassName == "ScreenGui" then
+            -- If it was a fallback ScreenGui, destroy the ScreenGui
+            mainFrame.Parent:Destroy()
+        else
+            -- If it was parented to an existing frame, just destroy the MainFrame itself
+            mainFrame:Destroy()
+        end
+        
+        print("[STATUS] Teleporter script STOPPED by user.")
+    end)
+    
+    TeleportToggle.MouseButton1Click:Connect(function()
+        -- Only update the manual state. The timerMonitor thread handles the operational state (isTeleporting)
+        isManuallyToggledOn = not isManuallyToggledOn
+        
+        -- If user manually toggles OFF, we immediately force the operational status OFF
+        if not isManuallyToggledOn then
+            isTeleporting = false
+        end
+        -- If user manually toggles ON, the timerMonitor will check for safety and resume if appropriate.
+    end)
+
+    -- Start concurrent threads (Model Mover, Clicker, and NEW Timer Monitor)
+    task.spawn(infiniteModelMover)
+    task.spawn(infiniteClicker)
+    task.spawn(timerMonitor) -- Start the new timer monitoring thread
+    
+    -- Start the main teleport loop and save the thread reference
+    teleportThread = task.spawn(teleportLoop)
+    updateStatus("Starting infinite teleport loop...", COLOR_INFO)
+end
+
+-- Run the script
+if player.Character then
+    startTeleport()
+else
+    -- Wait for the initial character to load if it hasn't yet.
+    player.CharacterAdded:Wait() 
+    startTeleport()
+end
+
+
+
+
+
+task.wait(3)
+
+
+
+-- Configuration
+local TELEPORT_DELAY = 0.15
+local SEARCH_WAIT_TIME = 2.0
+local TIMER_STOP_VALUES = {"00:10", "00:20"}
+local TIMER_START_THRESHOLD = "00:30"
+local MANNEQUIN_TEST_TIME = 5.0
+local PAW_WAIT_TIME = 6.0
+local MAX_CLICK_RETRIES = 5
+local PET_CLICK_RETRIES = 5
+
+-- Version info
+local VERSION_TEXT = "V4.8 fixed the pet clicking so it clicks the inventory correctly."
+local STATUS_DURATION = 5.0
+local STATUS_COLOR = Color3.fromRGB(255, 0, 0)
+local RESTORE_COLOR = Color3.fromRGB(255, 255, 255)
+local PET_MODE_DEFAULT_STATUS = "[Pet Mode] Disabled (OFF) or Idle (Waiting to activate)."
+local PET_MODE_DEFAULT_COLOR = Color3.new(0.8, 0.8, 0.8)
+
+-- Services
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Control flags
+local IS_SCRIPT_ACTIVE = true
+local IS_AUTO_PET_CLICK_ACTIVE = true
+local IsSequenceActive = false
+local ShouldStop = false
+
+local cycleCount = 0
+
+-- UI Element Holders
+local statusLabel = nil
+local toggleButton = nil
+local petStatusLabel = nil
+local petClickToggleButton = nil
+local screenGui = nil
+
+-- Function to parent UI to the specified parent
+local function createFullUI()
+    -- Wait for the parent container
+    local parentContainer = game:GetService("Players").LocalPlayer.PlayerGui:WaitForChild("HauntletFarmUI"):WaitForChild("MainFrame"):WaitForChild("ContentFrame")
+    
+    -- Create the main frame
+    local controlFrame = Instance.new("Frame")
+    controlFrame.Name = "ControlPanel"
+    controlFrame.Size = UDim2.new(0, 600, 0, 160)
+    controlFrame.Position = UDim2.new(0.5, -300, 0, 200)
+    controlFrame.BackgroundColor3 = Color3.new(0.1, 0.1, 0.1)
+    controlFrame.BackgroundTransparency = 0.1
+    controlFrame.BorderSizePixel = 0
+    controlFrame.Parent = parentContainer
+
+    -- Status Label
+    statusLabel = Instance.new("TextLabel")
+    statusLabel.Name = "ScriptStatus"
+    statusLabel.Size = UDim2.new(1, 0, 0, 30)
+    statusLabel.Position = UDim2.new(0, 0, 0, 0)
+    statusLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+    statusLabel.BackgroundTransparency = 0.3
+    statusLabel.BorderSizePixel = 0
+    statusLabel.Text = "Initializing Fashion Frenzy System..."
+    statusLabel.TextColor3 = Color3.new(1, 1, 1)
+    statusLabel.Font = Enum.Font.SourceSans
+    statusLabel.TextSize = 18
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+    statusLabel.TextYAlignment = Enum.TextYAlignment.Center
+    statusLabel.Parent = controlFrame
+
+    -- Toggle Button
+    toggleButton = Instance.new("TextButton")
+    toggleButton.Name = "ToggleButton"
+    toggleButton.Size = UDim2.new(0.7, -10, 0, 40)
+    toggleButton.Position = UDim2.new(0, 5, 0, 35)
+    toggleButton.BackgroundColor3 = Color3.new(1, 1, 1)
+    toggleButton.Text = "FF SCRIPT: OFF/ON"
+    toggleButton.TextColor3 = Color3.new(0, 0, 0)
+    toggleButton.Font = Enum.Font.SourceSansBold
+    toggleButton.TextSize = 20
+    toggleButton.Parent = controlFrame
+    toggleButton.MouseButton1Click:Connect(function()
+        IS_SCRIPT_ACTIVE = not IS_SCRIPT_ACTIVE
+        updateToggleButton()
+    end)
+
+    -- Close Button
+    local closeButton = Instance.new("TextButton")
+    closeButton.Name = "CloseButton"
+    closeButton.Size = UDim2.new(0.3, -5, 0, 40)
+    closeButton.Position = UDim2.new(0.7, 5, 0, 35)
+    closeButton.BackgroundColor3 = Color3.new(1, 0, 0)
+    closeButton.Text = "X"
+    closeButton.TextColor3 = Color3.new(1, 1, 1)
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.TextSize = 24
+    closeButton.Parent = controlFrame
+    closeButton.MouseButton1Click:Connect(function()
+        if screenGui then
+            IS_SCRIPT_ACTIVE = false
+            screenGui:Destroy()
+            warn("Fashion Frenzy Script UI destroyed.")
+        end
+    end)
+
+    -- Pet Status Label
+    petStatusLabel = Instance.new("TextLabel")
+    petStatusLabel.Name = "PetActivityStatus"
+    petStatusLabel.Size = UDim2.new(1, 0, 0, 30)
+    petStatusLabel.Position = UDim2.new(0, 0, 0, 80)
+    petStatusLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+    petStatusLabel.BackgroundTransparency = 0.3
+    petStatusLabel.BorderSizePixel = 0
+    petStatusLabel.Text = PET_MODE_DEFAULT_STATUS
+    petStatusLabel.TextColor3 = PET_MODE_DEFAULT_COLOR
+    petStatusLabel.Font = Enum.Font.SourceSans
+    petStatusLabel.TextSize = 18
+    petStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
+    petStatusLabel.TextYAlignment = Enum.TextYAlignment.Center
+    petStatusLabel.Parent = controlFrame
+
+    -- Auto Pet Click Toggle Button
+    petClickToggleButton = Instance.new("TextButton")
+    petClickToggleButton.Name = "AutoPetClickToggle"
+    petClickToggleButton.Size = UDim2.new(1, -10, 0, 40)
+    petClickToggleButton.Position = UDim2.new(0, 5, 0, 115)
+    petClickToggleButton.BackgroundColor3 = Color3.fromRGB(0, 128, 255)
+    petClickToggleButton.Text = "Auto Pet Click: ON (Continuous Row0)"
+    petClickToggleButton.TextColor3 = Color3.new(1, 1, 1)
+    petClickToggleButton.Font = Enum.Font.SourceSansBold
+    petClickToggleButton.TextSize = 18
+    petClickToggleButton.Parent = controlFrame
+    petClickToggleButton.MouseButton1Click:Connect(function()
+        IS_AUTO_PET_CLICK_ACTIVE = not IS_AUTO_PET_CLICK_ACTIVE
+        updatePetClickToggleButton()
+        print(string.format("Auto Pet Click mode set to: %s", IS_AUTO_PET_CLICK_ACTIVE and "ACTIVE" or "INACTIVE"))
+        if not IS_AUTO_PET_CLICK_ACTIVE then
+            updatePetStatus(PET_MODE_DEFAULT_STATUS, 0)
+        end
+    end)
+
+    -- Initialize toggle button states
+    updateToggleButton()
+    updatePetClickToggleButton()
+end
+
+-- Function to update toggle button appearance
+function updateToggleButton()
+    if toggleButton then
+        if IS_SCRIPT_ACTIVE then
+            toggleButton.Text = "FF SCRIPT: ON"
+            toggleButton.BackgroundColor3 = Color3.new(0, 1, 0)
+            updateControlStatus("Active. Searching for new round...")
+        else
+            toggleButton.Text = "FF SCRIPT: OFF"
+            toggleButton.BackgroundColor3 = Color3.new(1, 0, 0)
+            updateControlStatus("OFF. Click ON to resume search.")
+        end
+    end
+end
+
+-- Function to update pet click toggle button appearance
+function updatePetClickToggleButton()
+    if petClickToggleButton then
+        if IS_AUTO_PET_CLICK_ACTIVE then
+            petClickToggleButton.Text = "Auto Pet Click: ON (Continuous Row0)"
+            petClickToggleButton.BackgroundColor3 = Color3.fromRGB(0, 128, 255)
+        else
+            petClickToggleButton.Text = "Auto Pet Click: OFF"
+            petClickToggleButton.BackgroundColor3 = Color3.new(0.5, 0.5, 0.5)
+        end
+    end
+end
+
+-- Status display in the UI
+local function updateControlStatus(text)
+    if statusLabel then
+        statusLabel.Text = "[FF Mode] " .. text
+    end
+end
+
+-- Display version status message
+local function displayVersionStatus()
+    local HintAppContainer = LocalPlayer.PlayerGui:WaitForChild("HintApp", 2)
+    local uiElement = HintAppContainer and HintAppContainer:FindFirstChild("LargeTextLabel")
+    if uiElement and uiElement:IsA("TextLabel") then
+        print(string.format("Displaying version status: '%s' in red for %d seconds.", VERSION_TEXT, STATUS_DURATION))
+        updateControlStatus(VERSION_TEXT)
+        local originalTextTransparency = uiElement.TextTransparency
+        local originalTextColor = uiElement.TextColor3
+        uiElement.Text = VERSION_TEXT
+        uiElement.TextTransparency = 0
+        uiElement.TextColor3 = STATUS_COLOR
+        task.wait(STATUS_DURATION)
+        uiElement.Text = ""
+        uiElement.TextColor3 = originalTextColor
+        uiElement.TextTransparency = originalTextTransparency
+    else
+        warn("Could not find PlayerGui.HintApp.LargeTextLabel. Skipping status display.")
+    end
+end
+
+-- Timer monitor thread
+local function getCurrentTimerText()
+    local app = LocalPlayer.PlayerGui:FindFirstChild("FashionFrenzyInGameApp", true)
+    local body = app and app:FindFirstChild("Body")
+    local left = body and body:FindFirstChild("Left")
+    local container = left and left.Container
+    local valueLabel = container and container:FindFirstChild("ValueLabel")
+    if valueLabel and valueLabel:IsA("TextLabel") then
+        return valueLabel.Text
+    end
+    return nil
+end
+
+local function waitWithStopCheck(duration)
+    local checkInterval = 1
+    local remaining = duration
+    while remaining > 0 and not ShouldStop do
+        local waitTime = math.min(checkInterval, remaining)
+        task.wait(waitTime)
+        remaining = remaining - checkInterval
+    end
+end
+
+local function timerMonitor()
+    while true do
+        if IsSequenceActive then
+            local text = getCurrentTimerText()
+            if text then
+                for _, stopValue in ipairs(TIMER_STOP_VALUES) do
+                    if text == stopValue then
+                        if not ShouldStop then
+                            print("!! TIMER HIT STOP VALUE ("..stopValue.."). Stopping sequence.")
+                            updateControlStatus("Timer hit "..stopValue.."! Cycle ended.")
+                            ShouldStop = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end
+
+task.spawn(timerMonitor)
+
+-- Initialize UI and display version status
+createFullUI()
+displayVersionStatus()
+
+-- Utility functions for clicks
+local function getGuiCenter(guiObject)
+    local absPos = guiObject.AbsolutePosition
+    local absSize = guiObject.AbsoluteSize
+    local centerX = absPos.X + (absSize.X/2)
+    local centerY = absPos.Y + (absSize.Y/2)
+    return centerX, centerY
+end
+
+local function clickButton(button, retries)
+    if not button or not getconnections then return false end
+    retries = retries or 1
+    local success = false
+    local attempts = 0
+    for attempt=1,retries do
+        attempts=attempt
+        for _,conn in pairs(getconnections(button.MouseButton1Down)) do conn:Fire() end
+        task.wait(0.1)
+        local clickConns = getconnections(button.MouseButton1Click)
+        if #clickConns > 0 then
+            for _,conn in pairs(clickConns) do conn:Fire() end
+            success=true
+        else
+            for _,conn in pairs(getconnections(button.MouseButton1Up)) do conn:Fire() end
+            success=true
+        end
+        task.wait(0.1)
+        for _,conn in pairs(getconnections(button.MouseButton1Up)) do conn:Fire() end
+        if success then break end
+        task.wait(0.2)
+    end
+    if not success then warn("Failed to click: "..button.Name) end
+    return success
+end
+
+local function checkBackpackVisibility()
+    local gui = LocalPlayer.PlayerGui
+    local backpackApp = gui:FindFirstChild("BackpackApp")
+    local isVisible = backpackApp and backpackApp:IsA("ScreenGui") and backpackApp.Enabled
+    return isVisible
+end
+
+local function findInventoryButton()
+    local gui = LocalPlayer.PlayerGui
+    local SEARCH_NAMES = {"InventoryButton", "BackpackButton", "BagButton", "ItemsButton"}
+    for _,name in ipairs(SEARCH_NAMES) do
+        local button = gui:FindFirstChild(name,true)
+        if button and (button:IsA("TextButton") or button:IsA("ImageButton")) then return button end
+    end
+    return nil
+end
+
+local function openMainInventory()
+    if checkBackpackVisibility() then return end
+    local button = findInventoryButton()
+    if button then
+        local success=false
+        for attempt=1,MAX_CLICK_RETRIES do
+            if clickButton(button,1) then success=true break end
+            task.wait(0.2)
+        end
+        if success then task.wait(0.5) else warn("Failed to open inventory") end
+    else
+        warn("Inventory button not found")
+    end
+end
+
+local function clickAllBasicSelects()
+    if ShouldStop or not IS_SCRIPT_ACTIVE then return end
+    local container=LocalPlayer.PlayerGui:FindFirstChild("InteractionsApp") and LocalPlayer.PlayerGui.InteractionsApp:FindFirstChild("BasicSelects")
+    if not container then warn("BasicSelects not found") return end
+    local clickCount=0
+    for _,template in ipairs(container:GetChildren()) do
+        if ShouldStop or not IS_SCRIPT_ACTIVE then break end
+        if template:IsA("GuiObject") then
+            local btn = template:FindFirstChild("TapButton",true)
+            if btn and (btn:IsA("TextButton") or btn:IsA("ImageButton")) then
+                local success=false
+                for attempt=1,MAX_CLICK_RETRIES do
+                    if clickButton(btn,1) then success=true break end
+                    task.wait(0.1)
+                end
+                if success then
+                    clickCount+=1
+                    task.wait(0.1)
+                end
+            end
+        end
+    end
+    print("Clicked "..clickCount.." basic select buttons")
+end
+
+-- The main continuous pet clicking loop
+local function continuousRow0ClickLoop()
+    local gui=LocalPlayer:WaitForChild("PlayerGui")
+    while true do
+        if IS_SCRIPT_ACTIVE and IS_AUTO_PET_CLICK_ACTIVE then
+            openMainInventory()
+            task.wait(0.2)
+            local BackpackApp=gui:FindFirstChild("BackpackApp")
+            if BackpackApp and BackpackApp.Enabled then
+                updatePetStatus("Backpack: true. Clicking Row0...",0)
+                local frame=BackpackApp:FindFirstChild("Frame",true)
+                local body=frame and frame:FindFirstChild("Body",true)
+                local scroll=body and body:FindFirstChild("ScrollComplex",true)
+                local scroller=scroll and scroll:FindFirstChild("ScrollingFrame")
+                local content=scroller and scroller:FindFirstChild("Content")
+                local pets=content and content:FindFirstChild("pets")
+                local row0=pets and pets:FindFirstChild("Row0")
+                if row0 then
+                    local count=0
+                    task.wait(0.2)
+                    for _,desc in ipairs(row0:GetDescendants()) do
+                        if desc:IsA("TextButton") or desc:IsA("ImageButton") then
+                            local n=desc.Name:lower()
+                            if n=="button" or n=="tapbutton" or n:match("^%d+%_") then
+                                if clickButton(desc, PET_CLICK_RETRIES) then
+                                    count+=1
+                                    task.wait(0.01)
+                                end
+                            end
+                        end
+                    end
+                    updatePetStatus("Backpack: true. Clicked "..count.." pets.",0)
+                else
+                    updatePetStatus("Backpack: true. Row0 not found",0)
+                end
+            else
+                updatePetStatus("Backpack: false",0)
+            end
+            task.wait(0.1)
+        else
+            updatePetStatus(PET_MODE_DEFAULT_STATUS,0)
+            task.wait(1)
+        end
+    end
+end
+
+task.spawn(continuousRow0ClickLoop)
+
+-- Remaining functions (Teleport, find parts, run sequence...) stay as in your script, unchanged.
+
+-- You should include the rest of your teleport, runFullSequence, and main loop code below...
+-- (not shown here due to length, but they remain the same as your original code)
+
+
+
+
+
+
