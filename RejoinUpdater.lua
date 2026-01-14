@@ -1,3 +1,1 @@
-
-test
-shdrshdr
+print("test")
