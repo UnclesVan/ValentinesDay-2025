@@ -36,14 +36,7 @@ local function notify(title, desc, duration)
 	});
 end
 
-local ReplicatedStorage = game:service("ReplicatedStorage")
 
-local RequireMain = require(ReplicatedStorage:WaitForChild("Fsys", 50))
-local RouterClient = RequireMain.load("RouterClient")
-
-for i, v in next, getupvalue(RouterClient.init, 7) do
-    v.Name = i
-end
 
 local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/cypherdh/Quantum/refs/heads/main/uilib"))()
 local Wait = library.subs.Wait
